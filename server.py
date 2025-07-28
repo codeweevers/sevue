@@ -1,0 +1,116 @@
+import cv2
+import mediapipe as mp
+import time
+from flask import Flask, request
+import threading
+import numpy as np
+
+app = Flask(__name__)
+latest_frame = None
+lock = threading.Lock()
+
+@app.route('/frame', methods=['POST'])
+def receive_frame():
+    global latest_frame
+    file = request.files['frame']
+    img_bytes = np.frombuffer(file.read(), np.uint8)
+    frame = cv2.imdecode(img_bytes, cv2.IMREAD_COLOR)
+    with lock:
+        latest_frame = frame
+    return 'OK'
+
+def run_flask():
+    app.run(host='0.0.0.0', port=5001)
+
+threading.Thread(target=run_flask, daemon=True).start()
+
+mp_drawing = mp.solutions.drawing_utils
+mp_hands = mp.solutions.hands
+
+FINGER_GROUPS = {
+    'thumb': [0, 1, 2, 3, 4],
+    'index': [5, 6, 7, 8],
+    'middle': [9, 10, 11, 12],
+    'ring': [13, 14, 15, 16],
+    'pinky': [17, 18, 19, 20]
+}
+
+FINGER_COLORS = {
+    'thumb': (0, 0, 255),
+    'index': (0, 255, 0),
+    'middle': (255, 0, 0),
+    'ring': (255, 0, 255),
+    'pinky': (255, 255, 255)
+}
+
+def is_peace_sign(landmarks):
+    tips = {'index': 8, 'middle': 12, 'ring': 16, 'pinky': 20}
+    pips = {'index': 6, 'middle': 10, 'ring': 14, 'pinky': 18}
+
+    index_up = landmarks[tips['index']].y < landmarks[pips['index']].y
+    middle_up = landmarks[tips['middle']].y < landmarks[pips['middle']].y
+    ring_down = landmarks[tips['ring']].y > landmarks[pips['ring']].y
+    pinky_down = landmarks[tips['pinky']].y > landmarks[pips['pinky']].y
+
+    return index_up and middle_up and ring_down and pinky_down
+
+show_table = True
+last_toggle_time = 0
+cooldown = 1.5  # seconds
+
+with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) as hands:
+    while True:
+        with lock:
+            if latest_frame is None:
+                continue
+            frame = latest_frame.copy()
+
+        frame = cv2.flip(frame, 1)
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image.flags.writeable = False
+        results = hands.process(image)
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+        if results.multi_hand_landmarks:
+            for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+                h, w, _ = image.shape
+
+                # Draw colored landmarks
+                for group, indices in FINGER_GROUPS.items():
+                    color = FINGER_COLORS[group]
+                    for idx in indices:
+                        lm = hand_landmarks.landmark[idx]
+                        cx, cy = int(lm.x * w), int(lm.y * h)
+                        cv2.circle(image, (cx, cy), 6, color, -1)
+
+                # Gesture toggle logic
+                current_time = time.time()
+                if current_time - last_toggle_time > cooldown:
+                    if is_peace_sign(hand_landmarks.landmark):
+                        show_table = not show_table
+                        last_toggle_time = current_time
+
+                # Display landmark table
+                if show_table:
+                    base_x = 10 if hand_idx == 0 else w - 200
+                    base_y = 20
+                    spacing = 15
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    scale = 0.4
+
+                    cv2.putText(image, f"Hand {hand_idx + 1}", (base_x, base_y), font, scale, (0, 255, 255), 1)
+                    cv2.putText(image, "ID    X     Y     Z", (base_x, base_y + spacing), font, scale, (0, 255, 255), 1)
+
+                    for idx, lm in enumerate(hand_landmarks.landmark[:15]):
+                        row = f"{idx:<2}  {lm.x:.2f} {lm.y:.2f} {lm.z:.2f}"
+                        y_offset = base_y + (idx + 2) * spacing
+                        cv2.putText(image, row, (base_x, y_offset), font, scale, (255, 255, 255), 1)
+
+        cv2.imshow('Hand Tracking with Colored Groups + Toggle Table', image)
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
+
+cv2.destroyAllWindows()
