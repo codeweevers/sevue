@@ -1,28 +1,12 @@
 import cv2
 import mediapipe as mp
 import time
-from flask import Flask, request
-import threading
 import numpy as np
+import asyncio
+import websockets
 
-app = Flask(__name__)
 latest_frame = None
-lock = threading.Lock()
-
-@app.route('/frame', methods=['POST'])
-def receive_frame():
-    global latest_frame
-    file = request.files['frame']
-    img_bytes = np.frombuffer(file.read(), np.uint8)
-    frame = cv2.imdecode(img_bytes, cv2.IMREAD_COLOR)
-    with lock:
-        latest_frame = frame
-    return 'OK'
-
-def run_flask():
-    app.run(host='0.0.0.0', port=5001)
-
-threading.Thread(target=run_flask, daemon=True).start()
+lock = asyncio.Lock()
 
 mp_drawing = mp.solutions.drawing_utils
 mp_hands = mp.solutions.hands
@@ -46,71 +30,88 @@ FINGER_COLORS = {
 def is_peace_sign(landmarks):
     tips = {'index': 8, 'middle': 12, 'ring': 16, 'pinky': 20}
     pips = {'index': 6, 'middle': 10, 'ring': 14, 'pinky': 18}
+    return (
+        landmarks[tips['index']].y < landmarks[pips['index']].y and
+        landmarks[tips['middle']].y < landmarks[pips['middle']].y and
+        landmarks[tips['ring']].y > landmarks[pips['ring']].y and
+        landmarks[tips['pinky']].y > landmarks[pips['pinky']].y
+    )
 
-    index_up = landmarks[tips['index']].y < landmarks[pips['index']].y
-    middle_up = landmarks[tips['middle']].y < landmarks[pips['middle']].y
-    ring_down = landmarks[tips['ring']].y > landmarks[pips['ring']].y
-    pinky_down = landmarks[tips['pinky']].y > landmarks[pips['pinky']].y
+async def websocket_handler(websocket, path):
+    global latest_frame
+    async for message in websocket:
+        np_arr = np.frombuffer(message, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if frame is not None:
+            async with lock:
+                latest_frame = frame
 
-    return index_up and middle_up and ring_down and pinky_down
+async def process_video():
+    global latest_frame
+    show_table = True
+    last_toggle_time = 0
+    cooldown = 1.5
 
-show_table = True
-last_toggle_time = 0
-cooldown = 1.5  # seconds
+    with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) as hands:
+        while True:
+            await asyncio.sleep(0.01)  # Yield to event loop
+            async with lock:
+                if latest_frame is None:
+                    continue
+                frame = latest_frame.copy()
 
-with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) as hands:
-    while True:
-        with lock:
-            if latest_frame is None:
-                continue
-            frame = latest_frame.copy()
+            frame = cv2.flip(frame, 1)
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image.flags.writeable = False
+            results = hands.process(image)
+            image.flags.writeable = True
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        frame = cv2.flip(frame, 1)
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = hands.process(image)
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            if results.multi_hand_landmarks:
+                for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                    mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-        if results.multi_hand_landmarks:
-            for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
-                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+                    h, w, _ = image.shape
+                    for group, indices in FINGER_GROUPS.items():
+                        color = FINGER_COLORS[group]
+                        for idx in indices:
+                            lm = hand_landmarks.landmark[idx]
+                            cx, cy = int(lm.x * w), int(lm.y * h)
+                            cv2.circle(image, (cx, cy), 6, color, -1)
 
-                h, w, _ = image.shape
+                    current_time = time.time()
+                    if current_time - last_toggle_time > cooldown:
+                        if is_peace_sign(hand_landmarks.landmark):
+                            show_table = not show_table
+                            last_toggle_time = current_time
 
-                # Draw colored landmarks
-                for group, indices in FINGER_GROUPS.items():
-                    color = FINGER_COLORS[group]
-                    for idx in indices:
-                        lm = hand_landmarks.landmark[idx]
-                        cx, cy = int(lm.x * w), int(lm.y * h)
-                        cv2.circle(image, (cx, cy), 6, color, -1)
+                    if show_table:
+                        base_x = 10 if hand_idx == 0 else w - 200
+                        base_y = 20
+                        spacing = 15
+                        font = cv2.FONT_HERSHEY_SIMPLEX
+                        scale = 0.4
+                        cv2.putText(image, f"Hand {hand_idx + 1}", (base_x, base_y), font, scale, (0, 255, 255), 1)
+                        cv2.putText(image, "ID    X     Y     Z", (base_x, base_y + spacing), font, scale, (0, 255, 255), 1)
 
-                # Gesture toggle logic
-                current_time = time.time()
-                if current_time - last_toggle_time > cooldown:
-                    if is_peace_sign(hand_landmarks.landmark):
-                        show_table = not show_table
-                        last_toggle_time = current_time
+                        for idx, lm in enumerate(hand_landmarks.landmark[:15]):
+                            row = f"{idx:<2}  {lm.x:.2f} {lm.y:.2f} {lm.z:.2f}"
+                            y_offset = base_y + (idx + 2) * spacing
+                            cv2.putText(image, row, (base_x, y_offset), font, scale, (255, 255, 255), 1)
 
-                # Display landmark table
-                if show_table:
-                    base_x = 10 if hand_idx == 0 else w - 200
-                    base_y = 20
-                    spacing = 15
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    scale = 0.4
+            cv2.imshow('WebSocket Hand Tracking', image)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
-                    cv2.putText(image, f"Hand {hand_idx + 1}", (base_x, base_y), font, scale, (0, 255, 255), 1)
-                    cv2.putText(image, "ID    X     Y     Z", (base_x, base_y + spacing), font, scale, (0, 255, 255), 1)
+    cv2.destroyAllWindows()
 
-                    for idx, lm in enumerate(hand_landmarks.landmark[:15]):
-                        row = f"{idx:<2}  {lm.x:.2f} {lm.y:.2f} {lm.z:.2f}"
-                        y_offset = base_y + (idx + 2) * spacing
-                        cv2.putText(image, row, (base_x, y_offset), font, scale, (255, 255, 255), 1)
+async def main():
+    server = await websockets.serve(websocket_handler, '0.0.0.0', 5001, max_size=2**22)
+    print("WebSocket server started on ws://0.0.0.0:5001")
+    await asyncio.gather(server.wait_closed(), process_video())
 
-        cv2.imshow('Hand Tracking with Colored Groups + Toggle Table', image)
-        if cv2.waitKey(10) & 0xFF == ord('q'):
-            break
-
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Server stopped.")
