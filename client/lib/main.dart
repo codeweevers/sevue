@@ -2,7 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
-import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 late List<CameraDescription> cameras;
 
@@ -52,7 +53,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) =>
-                          CameraScreen(serverUrl: "http://$ip:$port/frame"),
+                          CameraScreen(serverUrl: "ws://$ip:$port"),
                     ));
               },
               child: const Text("Connect & Stream"),
@@ -73,6 +74,7 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
+  late WebSocketChannel channel;
   bool _isStreaming = false;
 
   @override
@@ -83,6 +85,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _controller.initialize().then((_) {
       if (!mounted) return;
       setState(() {});
+      channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
       _controller.startImageStream(_processCameraImage);
     });
   }
@@ -113,7 +116,6 @@ class _CameraScreenState extends State<CameraScreen> {
           int r = (yp + 1.370705 * (vp - 128)).round();
           int g = (yp - 0.698001 * (vp - 128) - 0.337633 * (up - 128)).round();
           int b = (yp + 1.732446 * (up - 128)).round();
-
           final color = img.ColorRgb8(
             r.clamp(0, 255),
             g.clamp(0, 255),
@@ -123,15 +125,8 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       }
 
-      // Encode to JPEG
       final jpegData = img.encodeJpg(imgRgb, quality: 50);
-
-      final request =
-          http.MultipartRequest('POST', Uri.parse(widget.serverUrl));
-      request.files.add(http.MultipartFile.fromBytes(
-          'frame', Uint8List.fromList(jpegData),
-          filename: 'frame.jpg'));
-      await request.send();
+      channel.sink.add(Uint8List.fromList(jpegData));
     } catch (e) {
       debugPrint("Error: $e");
     } finally {
@@ -141,6 +136,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   void dispose() {
+    channel.sink.close();
     _controller.dispose();
     super.dispose();
   }
