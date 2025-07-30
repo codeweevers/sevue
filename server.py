@@ -37,7 +37,7 @@ def is_peace_sign(landmarks):
         landmarks[tips['pinky']].y > landmarks[pips['pinky']].y
     )
 
-async def websocket_handler(websocket, path):
+async def websocket_handler(websocket, path=None):
     global latest_frame
     async for message in websocket:
         np_arr = np.frombuffer(message, np.uint8)
@@ -106,7 +106,7 @@ async def process_video():
     cv2.destroyAllWindows()
 
 async def main():
-    server = await websockets.serve(websocket_handler, '0.0.0.0', 5001, max_size=2**22)
+    server = await websockets.serve(websocket_handler, '0.0.0.0', 5001)
     print("WebSocket server started on ws://0.0.0.0:5001")
     await asyncio.gather(server.wait_closed(), process_video())
 

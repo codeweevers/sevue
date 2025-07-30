@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
-import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 late List<CameraDescription> cameras;
@@ -125,7 +124,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       }
 
-      final jpegData = img.encodeJpg(imgRgb, quality: 50);
+      final jpegData = img.encodeJpg(imgRgb, quality: 90);
       channel.sink.add(Uint8List.fromList(jpegData));
     } catch (e) {
       debugPrint("Error: $e");
