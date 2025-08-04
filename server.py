@@ -39,10 +39,7 @@ def is_peace_sign(landmarks):
 
 async def signaling_handler(websocket, path=None):
     pc = RTCPeerConnection()
-    media_blackhole = MediaBlackhole()
     video_track = None
-
-    # Hand tracking state
     show_table = True
     last_toggle_time = 0
     cooldown = 1.5
@@ -58,7 +55,14 @@ async def signaling_handler(websocket, path=None):
     @pc.on('icecandidate')
     async def on_icecandidate(event):
         if event.candidate:
-            await websocket.send(json.dumps({'type': 'candidate', 'candidate': event.candidate}))
+            await websocket.send(json.dumps({
+                'type': 'candidate',
+                'candidate': {
+                    'candidate': event.candidate.candidate,
+                    'sdpMid': event.candidate.sdpMid,
+                    'sdpMLineIndex': event.candidate.sdpMLineIndex
+                }
+            }))
 
     async for message in websocket:
         data = json.loads(message)
@@ -69,15 +73,15 @@ async def signaling_handler(websocket, path=None):
             await pc.setLocalDescription(answer)
             await websocket.send(json.dumps({'type': pc.localDescription.type, 'sdp': pc.localDescription.sdp}))
         elif data['type'] == 'candidate':
-            candidate = data['candidate']
-            await pc.addIceCandidate(candidate)
+            c = data['candidate']
+            # aiortc expects candidate as dict or RTCIceCandidate
+            await pc.addIceCandidate(c)
 
         # Process video frames
         if video_track:
             while True:
                 frame = await video_track.recv()
                 img = frame.to_ndarray(format="bgr24")
-
                 image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 image.flags.writeable = False
                 results = hands.process(image)
@@ -87,7 +91,6 @@ async def signaling_handler(websocket, path=None):
                 if results.multi_hand_landmarks:
                     for hand_idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
                         mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
                         h, w, _ = image.shape
                         for group, indices in FINGER_GROUPS.items():
                             color = FINGER_COLORS[group]
@@ -95,13 +98,11 @@ async def signaling_handler(websocket, path=None):
                                 lm = hand_landmarks.landmark[idx]
                                 cx, cy = int(lm.x * w), int(lm.y * h)
                                 cv2.circle(image, (cx, cy), 6, color, -1)
-
                         current_time = time.time()
                         if current_time - last_toggle_time > cooldown:
                             if is_peace_sign(hand_landmarks.landmark):
                                 show_table = not show_table
                                 last_toggle_time = current_time
-
                         if show_table:
                             base_x = 10 if hand_idx == 0 else w - 200
                             base_y = 20
@@ -110,12 +111,10 @@ async def signaling_handler(websocket, path=None):
                             scale = 0.4
                             cv2.putText(image, f"Hand {hand_idx + 1}", (base_x, base_y), font, scale, (0, 255, 255), 1)
                             cv2.putText(image, "ID    X     Y     Z", (base_x, base_y + spacing), font, scale, (0, 255, 255), 1)
-
                             for idx, lm in enumerate(hand_landmarks.landmark[:15]):
                                 row = f"{idx:<2}  {lm.x:.2f} {lm.y:.2f} {lm.z:.2f}"
                                 y_offset = base_y + (idx + 2) * spacing
                                 cv2.putText(image, row, (base_x, y_offset), font, scale, (255, 255, 255), 1)
-
                 cv2.imshow('WebRTC Hand Tracking', image)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
