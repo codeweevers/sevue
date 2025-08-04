@@ -1,14 +1,9 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
-import 'package:image/image.dart' as img;
 import 'package:web_socket_channel/web_socket_channel.dart';
-
-late List<CameraDescription> cameras;
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  cameras = await availableCameras();
   runApp(const CameraStreamerApp());
 }
 
@@ -72,81 +67,65 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late CameraController _controller;
+  late RTCPeerConnection _peerConnection;
+  late MediaStream _localStream;
+  final _localRenderer = RTCVideoRenderer();
   late WebSocketChannel channel;
-  bool _isStreaming = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = CameraController(cameras.first, ResolutionPreset.low,
-        enableAudio: false);
-    _controller.initialize().then((_) {
-      if (!mounted) return;
-      setState(() {});
-      channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
-      _controller.startImageStream(_processCameraImage);
-    });
+    _initRenderers();
+    _connect();
   }
 
-  Future<void> _processCameraImage(CameraImage image) async {
-    if (_isStreaming) return;
-    _isStreaming = true;
+  Future<void> _initRenderers() async {
+    await _localRenderer.initialize();
+  }
 
-    try {
-      final width = image.width;
-      final height = image.height;
-
-      // Convert YUV420 to RGB image
-      final imgRgb = img.Image(width: width, height: height);
-
-      final planeY = image.planes[0].bytes;
-      final planeU = image.planes[1].bytes;
-      final planeV = image.planes[2].bytes;
-
-      for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-          final uvIndex = (y >> 1) * (image.planes[1].bytesPerRow) + (x >> 1);
-
-          final yp = planeY[y * image.planes[0].bytesPerRow + x];
-          final up = planeU[uvIndex];
-          final vp = planeV[uvIndex];
-
-          int r = (yp + 1.370705 * (vp - 128)).round();
-          int g = (yp - 0.698001 * (vp - 128) - 0.337633 * (up - 128)).round();
-          int b = (yp + 1.732446 * (up - 128)).round();
-          final color = img.ColorRgb8(
-            r.clamp(0, 255),
-            g.clamp(0, 255),
-            b.clamp(0, 255),
-          );
-          imgRgb.setPixel(x, y, color);
-        }
+  Future<void> _connect() async {
+    channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
+    _localStream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': false});
+    _localRenderer.srcObject = _localStream;
+    _peerConnection = await createPeerConnection({
+      'iceServers': [
+        {'urls': 'stun:stun.l.google.com:19302'}
+      ]
+    });
+    _peerConnection.addStream(_localStream);
+    _peerConnection.onIceCandidate = (candidate) {
+      channel.sink.add({'type': 'candidate', 'candidate': candidate.toMap()});
+    };
+    channel.stream.listen((message) async {
+      // Handle signaling messages (SDP/candidate)
+      if (message is Map && message['type'] == 'answer') {
+        await _peerConnection.setRemoteDescription(RTCSessionDescription(message['sdp'], message['type']));
+      } else if (message is Map && message['type'] == 'candidate') {
+        await _peerConnection.addCandidate(RTCIceCandidate(
+          message['candidate']['candidate'],
+          message['candidate']['sdpMid'],
+          message['candidate']['sdpMLineIndex'],
+        ));
       }
-
-      final jpegData = img.encodeJpg(imgRgb, quality: 90);
-      channel.sink.add(Uint8List.fromList(jpegData));
-    } catch (e) {
-      debugPrint("Error: $e");
-    } finally {
-      _isStreaming = false;
-    }
+    });
+    RTCSessionDescription offer = await _peerConnection.createOffer();
+    await _peerConnection.setLocalDescription(offer);
+    channel.sink.add({'type': 'offer', 'sdp': offer.sdp});
   }
 
   @override
   void dispose() {
+    _localRenderer.dispose();
+    _peerConnection.close();
     channel.sink.close();
-    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Streaming")),
-      body: _controller.value.isInitialized
-          ? CameraPreview(_controller)
-          : const Center(child: CircularProgressIndicator()),
+      appBar: AppBar(title: const Text("Streaming (WebRTC)")),
+      body: RTCVideoView(_localRenderer),
     );
   }
 }
