@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'dart:convert';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const CameraStreamerApp());
-}
+void main() => runApp(const CameraStreamerApp());
 
 class CameraStreamerApp extends StatelessWidget {
   const CameraStreamerApp({super.key});
   @override
-  Widget build(BuildContext context) =>
-      const MaterialApp(home: ConnectScreen());
+  Widget build(BuildContext context) => const MaterialApp(home: ConnectScreen());
 }
 
 class ConnectScreen extends StatefulWidget {
@@ -46,8 +43,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          CameraScreen(serverUrl: "ws://$ip:$port"),
+                      builder: (_) => CameraScreen(serverUrl: "ws://$ip:$port"),
                     ));
               },
               child: const Text("Connect & Stream"),
@@ -67,58 +63,54 @@ class CameraScreen extends StatefulWidget {
 }
 
 class _CameraScreenState extends State<CameraScreen> {
-  late RTCPeerConnection _peerConnection;
-  late MediaStream _localStream;
   final _localRenderer = RTCVideoRenderer();
-  late WebSocketChannel channel;
+  RTCPeerConnection? _peerConnection;
+  MediaStream? _localStream;
+  WebSocketChannel? _channel;
 
   @override
   void initState() {
     super.initState();
-    _initRenderers();
+    _localRenderer.initialize();
     _connect();
-  }
-
-  Future<void> _initRenderers() async {
-    await _localRenderer.initialize();
-  }
-
-  Future<void> _connect() async {
-    channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
-    _localStream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': false});
-    _localRenderer.srcObject = _localStream;
-    _peerConnection = await createPeerConnection({
-      'iceServers': [
-        {'urls': 'stun:stun.l.google.com:19302'}
-      ]
-    });
-    _peerConnection.addStream(_localStream);
-    _peerConnection.onIceCandidate = (candidate) {
-      channel.sink.add({'type': 'candidate', 'candidate': candidate.toMap()});
-    };
-    channel.stream.listen((message) async {
-      // Handle signaling messages (SDP/candidate)
-      if (message is Map && message['type'] == 'answer') {
-        await _peerConnection.setRemoteDescription(RTCSessionDescription(message['sdp'], message['type']));
-      } else if (message is Map && message['type'] == 'candidate') {
-        await _peerConnection.addCandidate(RTCIceCandidate(
-          message['candidate']['candidate'],
-          message['candidate']['sdpMid'],
-          message['candidate']['sdpMLineIndex'],
-        ));
-      }
-    });
-    RTCSessionDescription offer = await _peerConnection.createOffer();
-    await _peerConnection.setLocalDescription(offer);
-    channel.sink.add({'type': 'offer', 'sdp': offer.sdp});
   }
 
   @override
   void dispose() {
     _localRenderer.dispose();
-    _peerConnection.close();
-    channel.sink.close();
+    _peerConnection?.close();
+    _channel?.sink.close();
     super.dispose();
+  }
+
+  Future<void> _connect() async {
+    _channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
+    _localStream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': false});
+    _localRenderer.srcObject = _localStream;
+    _peerConnection = await createPeerConnection({});
+    // Use addTrack instead of addStream for Unified Plan
+    for (var track in _localStream!.getTracks()) {
+      _peerConnection!.addTrack(track, _localStream!);
+    }
+    _peerConnection!.onIceCandidate = (candidate) {
+      _channel!.sink.add(jsonEncode({'type': 'candidate', 'candidate': candidate.toMap()}));
+    };
+    _channel!.stream.listen((message) async {
+      final data = jsonDecode(message);
+      if (data['type'] == 'answer') {
+        await _peerConnection!.setRemoteDescription(
+          RTCSessionDescription(data['sdp'], data['type']),
+        );
+      } else if (data['type'] == 'candidate') {
+        final c = data['candidate'];
+        await _peerConnection!.addCandidate(
+          RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']),
+        );
+      }
+    });
+    RTCSessionDescription offer = await _peerConnection!.createOffer();
+    await _peerConnection!.setLocalDescription(offer);
+    _channel!.sink.add(jsonEncode({'type': 'offer', 'sdp': offer.sdp}));
   }
 
   @override
