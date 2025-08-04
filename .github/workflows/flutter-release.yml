@@ -1,0 +1,65 @@
+name: Flutter Android Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Bump version in pubspec.yaml
+        run: |
+          cd client
+          VERSION_LINE=$(grep '^version:' pubspec.yaml)
+          VERSION=$(echo $VERSION_LINE | cut -d ' ' -f2 | cut -d '+' -f1)
+          BUILD=$(echo $VERSION_LINE | cut -d '+' -f2)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          PATCH=$((PATCH+1))
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          NEW_BUILD=$((BUILD+1))
+          sed -i "s/^version: .*/version: $NEW_VERSION+$NEW_BUILD/" pubspec.yaml
+          echo "New version: $NEW_VERSION+$NEW_BUILD"
+
+      - name: Get version
+        id: get_version
+        run: |
+          cd client
+          echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}')" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          cd client
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd client
+          flutter build apk --release
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Upload APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          files: client/build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
