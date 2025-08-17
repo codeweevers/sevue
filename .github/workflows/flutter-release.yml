@@ -39,4 +39,4 @@ jobs:
           generate_release_notes: true
           files: client/build/app/outputs/flutter-apk/app-${{ github.ref_name }}.apk
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
