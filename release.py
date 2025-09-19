@@ -15,7 +15,7 @@ with open('pubspec.yaml') as f:
     data = f.read()
 
 data = re.sub(r'^version: .*', f'version: {version}+{build_number}', data, flags=re.M)
-with open('pubspec.yaml', 'w') as f:
+with open('client/pubspec.yaml', 'w') as f:
     f.write(data)
 
 # Commit, tag, push
