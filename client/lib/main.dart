@@ -1,123 +1,135 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'dart:convert';
+import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
 
-void main() => runApp(const CameraStreamerApp());
-
-class CameraStreamerApp extends StatelessWidget {
-  const CameraStreamerApp({super.key});
-  @override
-  Widget build(BuildContext context) => const MaterialApp(home: ConnectScreen());
+void main() {
+  runApp(const MyApp());
 }
 
-class ConnectScreen extends StatefulWidget {
-  const ConnectScreen({super.key});
-  @override
-  State<ConnectScreen> createState() => _ConnectScreenState();
-}
-
-class _ConnectScreenState extends State<ConnectScreen> {
-  final ipController = TextEditingController(text: "192.168.1.100");
-  final portController = TextEditingController(text: "5001");
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Connect to Server")),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            TextField(
-                controller: ipController,
-                decoration: const InputDecoration(labelText: "Server IP")),
-            TextField(
-                controller: portController,
-                decoration: const InputDecoration(labelText: "Port")),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                final ip = ipController.text;
-                final port = portController.text;
-                Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CameraScreen(serverUrl: "ws://$ip:$port"),
-                    ));
-              },
-              child: const Text("Connect & Stream"),
-            ),
-          ],
-        ),
+    return MaterialApp(
+      title: 'Jitsi Meet Flutter SDK Sample',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
+      home: const MyHomePage(title: 'Jitsi Meet Flutter SDK Sample'),
     );
   }
 }
 
-class CameraScreen extends StatefulWidget {
-  final String serverUrl;
-  const CameraScreen({super.key, required this.serverUrl});
+class MyHomePage extends StatefulWidget {
+  const MyHomePage({super.key, required this.title});
+  final String title;
+
   @override
-  State<CameraScreen> createState() => _CameraScreenState();
+  State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _CameraScreenState extends State<CameraScreen> {
-  final _localRenderer = RTCVideoRenderer();
-  RTCPeerConnection? _peerConnection;
-  MediaStream? _localStream;
-  WebSocketChannel? _channel;
+class _MyHomePageState extends State<MyHomePage> {
+  final meetingNameController = TextEditingController();
+  final jitsiMeet = JitsiMeet();
 
   @override
   void initState() {
     super.initState();
-    _localRenderer.initialize();
-    _connect();
+
+    // Register Jitsi event listeners
+
+    JitsiMeetEventListener(
+      conferenceWillJoin: (url) => _showSnack("Joining meeting..."),
+      conferenceJoined: (url) => _showSnack("Joined meeting successfully!"),
+      conferenceTerminated: (url, error) =>
+          _showSnack("Meeting ended (error: $error)"),
+      readyToClose: () => _showSnack("Meeting closed"),
+    );
+  }
+
+  /// Generate a random meeting name
+  void joinMeeting() {
+    String roomName = meetingNameController.text.trim();
+    if (roomName.isEmpty) {
+      _showSnack("Please enter a meeting name");
+      return;
+    }
+    _joinRoom(roomName);
+  }
+
+  /// Helper to join room
+  void _joinRoom(String roomName) {
+    var options = JitsiMeetConferenceOptions(
+      serverURL: "https://meet.techclub.co.in",
+      room: roomName,
+      configOverrides: {
+        "startWithAudioMuted": true,
+        "startWithVideoMuted": true,
+        "subject": "roomName",
+      },
+      featureFlags: {
+        "unsaferoomwarning.enabled": false,
+        "security-options.enabled": false,
+      },
+      userInfo: JitsiMeetUserInfo(
+        displayName: "Flutter User",
+        email: "user@example.com",
+      ),
+    );
+
+    jitsiMeet.join(options);
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   void dispose() {
-    _localRenderer.dispose();
-    _peerConnection?.close();
-    _channel?.sink.close();
+    meetingNameController.dispose();
     super.dispose();
-  }
-
-  Future<void> _connect() async {
-    _channel = WebSocketChannel.connect(Uri.parse(widget.serverUrl));
-    _localStream = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': false});
-    _localRenderer.srcObject = _localStream;
-    _peerConnection = await createPeerConnection({});
-    // Use addTrack instead of addStream for Unified Plan
-    for (var track in _localStream!.getTracks()) {
-      _peerConnection!.addTrack(track, _localStream!);
-    }
-    _peerConnection!.onIceCandidate = (candidate) {
-      _channel!.sink.add(jsonEncode({'type': 'candidate', 'candidate': candidate.toMap()}));
-    };
-    _channel!.stream.listen((message) async {
-      final data = jsonDecode(message);
-      if (data['type'] == 'answer') {
-        await _peerConnection!.setRemoteDescription(
-          RTCSessionDescription(data['sdp'], data['type']),
-        );
-      } else if (data['type'] == 'candidate') {
-        final c = data['candidate'];
-        await _peerConnection!.addCandidate(
-          RTCIceCandidate(c['candidate'], c['sdpMid'], c['sdpMLineIndex']),
-        );
-      }
-    });
-    RTCSessionDescription offer = await _peerConnection!.createOffer();
-    await _peerConnection!.setLocalDescription(offer);
-    _channel!.sink.add(jsonEncode({'type': 'offer', 'sdp': offer.sdp}));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Streaming (WebRTC)")),
-      body: RTCVideoView(_localRenderer),
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            // TextField for joining
+            SizedBox(
+              width: 250,
+              height: 50,
+              child: TextField(
+                controller: meetingNameController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Enter meeting name',
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Join existing meeting button
+            SizedBox(
+              width: 150,
+              height: 50,
+              child: FilledButton(
+                onPressed: joinMeeting,
+                child: const Text("create / Join Meeting"),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
