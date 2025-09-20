@@ -11,7 +11,7 @@ version = sys.argv[1]
 build_number = subprocess.check_output(['git', 'rev-list', '--count', 'HEAD']).decode().strip()
 
 # Update pubspec.yaml
-with open('pubspec.yaml') as f:
+with open('client/pubspec.yaml') as f:
     data = f.read()
 
 data = re.sub(r'^version: .*', f'version: {version}+{build_number}', data, flags=re.M)
