@@ -19,7 +19,7 @@ with open('client/pubspec.yaml', 'w') as f:
     f.write(data)
 
 # Commit, tag, push
-subprocess.run(f'git add pubspec.yaml && git commit -m "Bump version to {version}+{build_number}"', shell=True, check=True)
+subprocess.run(f'git add client/pubspec.yaml && git commit -m "Bump version to {version}+{build_number}"', shell=True, check=True)
 subprocess.run(f'git tag -a v{version} -m "Release v{version}"', shell=True, check=True)
 subprocess.run(f'git push origin HEAD && git push origin v{version}', shell=True, check=True)
 
