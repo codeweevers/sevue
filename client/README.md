@@ -1,4 +1,3 @@
-# client
+# sevue_client
 
 A new Flutter project.
-build to coop
