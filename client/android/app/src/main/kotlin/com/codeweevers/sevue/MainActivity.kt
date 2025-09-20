@@ -1,4 +1,4 @@
-package com.example.sevue_client
+package com.codeweevers.sevue
 
 import io.flutter.embedding.android.FlutterActivity
 
