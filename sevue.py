@@ -16,11 +16,11 @@ text = ""
 running = True
 latest_frame = None
 frame_lock = threading.Lock()
+toggle = False
 
 
-def ai_thread():
+def ai():
     global text, latest_frame
-
     BaseOptions = mp.tasks.BaseOptions
     GestureRecognizer = mp.tasks.vision.GestureRecognizer
     GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
@@ -28,6 +28,7 @@ def ai_thread():
     VisionRunningMode = mp.tasks.vision.RunningMode
 
     model_path = "gesture_recognizer.task"
+    last_time = 0
     frame_timestamp = 0
 
     def print_result(result, output_image, timestamp_ms):
@@ -55,6 +56,10 @@ def ai_thread():
                 continue
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            now = time.time()
+            if now - last_time < 0.05:  # send max 20 FPS to AI
+                continue
+            last_time = now
             frame_timestamp += 1
             recognizer.recognize_async(mp_image, frame_timestamp)
             time.sleep(0.01)
@@ -77,7 +82,6 @@ def compose_subtitled_frame(frame, subtitle_text):
 
     x = (w - tw) // 2
     y = (bar_height + th) // 2
-
     cv2.putText(
         bar,
         subtitle_text,
@@ -88,13 +92,13 @@ def compose_subtitled_frame(frame, subtitle_text):
         thickness,
         cv2.LINE_AA,
     )
-
+    bar = cv2.flip(bar, 1)
     combined = np.vstack((frame, bar))
     return combined
 
 
 def virtual_cam():
-    global running, text
+    global running, text, latest_frame
     glfw.init()
     glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
     window = glfw.create_window(640, 480, "GL", None, None)
@@ -142,12 +146,22 @@ def on_exit(icon, item):
     icon.stop()
 
 
+def toggle_sevue(state):
+    global toggel
+    if state == True:
+        toggel = False
+    else:
+        toggle = True
+
+
 def tray():
     menu = (item("Exit", on_exit),)
     icon = pystray.Icon("Sevue", create_icon_image(), "Sevue", menu)
     icon.run()
 
 
-threading.Thread(target=ai_thread, daemon=True).start()
-threading.Thread(target=virtual_cam, daemon=True).start()
+ai_thread = threading.Thread(target=ai, daemon=True)
+cam_thread = threading.Thread(target=virtual_cam, daemon=True)
+ai_thread.start()
+cam_thread.start()
 tray()
