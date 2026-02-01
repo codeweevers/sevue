@@ -1,1 +1,0 @@
-pyinstaller --onefile --noconsole --add-binary ".env\Lib\site-packages\glfw\glfw3.dll;glfw" --hidden-import=moderngl  --hidden-import=glfw --hidden-import=cv2 --hidden-import=pystray --hidden-import=PIL --hidden-import=time --hidden-import=mediapipe --add-data "gesture_recognizer.task;." --name Sevue sevue.pyw
