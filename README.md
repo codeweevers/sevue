@@ -4,7 +4,7 @@ A real-time Indian Sign Language (ISL) to speech and text translator using compu
 
 ## Features
 
-- Real-time gesture recognition using MediaPipe and TensorFlow
+- Real-time gesture recognition using MediaPipe task API
 - Converts ISL gestures to text and speech output
 - Virtual camera integration for seamless video processing
 - Cross-platform support (Windows, macOS, Linux)
@@ -13,19 +13,23 @@ A real-time Indian Sign Language (ISL) to speech and text translator using compu
 ## Installation
 
 ### Prerequisites
-- Python 3.7+
+
+- Python > 3.10 and python < 3.12
 - Webcam or video input device
 
 ### Steps
+
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/yourusername/sevue.git
    cd sevue
    ```
 
 2. Install dependencies:
+
    ```bash
-   pip install opencv-python mediapipe tensorflow pyvirtualcam moderngl glfw pystray pillow numpy
+   pip install opencv-python mediapipe pyvirtualcam pillow numpy pyside6
    ```
 
 3. Install the virtual camera (requires administrator privileges):
@@ -36,6 +40,7 @@ A real-time Indian Sign Language (ISL) to speech and text translator using compu
 ## Usage
 
 Run the main application:
+
 ```bash
 python sevue.pyw
 ```
@@ -45,25 +50,21 @@ The application will start gesture recognition and provide real-time translation
 ## Testing
 
 Test your camera setup:
+
 ```bash
 python -c "import cv2; print(cv2.VideoCapture(0).isOpened())"
-```
-
-## Building
-
-To create an executable:
-```bash
-makeexe.bat
 ```
 
 ## Code Quality
 
 Format code:
+
 ```bash
 python -m black *.py
 ```
 
 Type check:
+
 ```bash
 python -m mypy *.py --ignore-missing-imports
 ```
