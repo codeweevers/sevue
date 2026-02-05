@@ -75,7 +75,7 @@ class State(QObject):
         self._confidence = 0.0
         self.SHOW_HAND_DEBUG = False
         self.SHOW_PREVIEW = True
-        self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.BASE_DIR = self.resource_path("")
         self._lock = threading.Lock()
         self._hand_landmarks = None
         self._subtitle = {
@@ -145,6 +145,11 @@ class State(QObject):
                 "toggle_debug": self.FEATURES["toggle_debug"]["shortcut"],
             },
         }
+
+    def resource_path(self, relative):
+        if hasattr(sys, "_MEIPASS"):
+            return os.path.join(sys._MEIPASS, relative)
+        return os.path.join(os.path.abspath("."), relative)
 
     def set_subtitle(self, text, duration=2.5):
         with self._lock:
