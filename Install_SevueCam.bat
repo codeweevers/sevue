@@ -27,5 +27,4 @@ regsvr32 /s "UnityCaptureFilter64.dll" "/i:UnityCaptureName=Sevue-VirtualCam"
 
 echo Done.
 echo Sevue-VirtualCam installed successfully.
-pause
 exit /b
