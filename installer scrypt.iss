@@ -48,6 +48,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "C:\Users\tech\Documents\GitHub\sevue\dist\Sevue\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\tech\Documents\GitHub\sevue\dist\Sevue\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\tech\Documents\GitHub\sevue\Install_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\tech\Documents\GitHub\sevue\Uninstall_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter32.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter64.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
@@ -55,5 +59,20 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+Filename: "{app}\Install_SevueCam.bat"; StatusMsg: "Installing virtual camera driver..."; Flags: runascurrentuser; Check: not IsUnityCaptureInstalled()
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+[UninstallRun] 
+Filename: "{app}\Uninstall_SevueCam.bat"; StatusMsg: "Uninstalling virtual camera driver..."; Flags: runascurrentuser
+[Code]
+function IsUnityCaptureInstalled(): Boolean;
+begin
+  Result :=
+    RegKeyExists(
+      HKLM,
+      'Software\{#MyAppPublisher}'
+    );
+end;
 
+[Registry]
+Root: HKLM; Subkey: "Software\{#MyAppPublisher}"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\{#MyAppPublisher}\[#MyAppName}"; Flags: uninsdeletekey
