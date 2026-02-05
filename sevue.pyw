@@ -25,6 +25,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QCheckBox,
     QStackedWidget,
+    QFrame,
+    QListWidget,
+    QLineEdit,
 )
 from PySide6.QtGui import (
     QImage,
@@ -414,7 +417,7 @@ class HomePage(QWidget):
         self.main = main
         logo = QLabel()
         logo.setAlignment(Qt.AlignCenter)
-        logo_path = os.path.join(STATE.BASE_DIR, "icons", "favicon.ico")
+        logo_path = os.path.join(STATE.BASE_DIR, "icons", "logo.png")
         pixmap = QPixmap(logo_path)
         logo.setPixmap(
             pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -423,6 +426,7 @@ class HomePage(QWidget):
         # Buttons
         self.toggle_btn = QPushButton("Start Sevue")
         self.toggle_btn.setAutoRepeat(False)
+        self.toggle_btn.setCheckable(True)
         self.toggle_btn.clicked.connect(self.main.toggle_camera)
         settings_btn = QPushButton("Settings")
 
@@ -431,12 +435,20 @@ class HomePage(QWidget):
             btn.setStyleSheet(
                 """
                 QPushButton {
-                    border: 2px solid black;
-                    border-radius: 12px;
+                    border: 1px solid #bdbdbd;
+                    border-radius: 20px;
                     font-size: 14px;
+                    padding: 6px 14px;
+                    background: #1E90FF;
+                    color: #1f1f1f;
+                }
+                QPushButton:checked {
+                    background: #2a67f5;
+                    color: white;
+                    border: 1px solid #2a67f5;
                 }
                 QPushButton:hover {
-                    background-color: #eee;
+                    background-color: #ededed;
                 }
             """
             )
@@ -491,6 +503,7 @@ class MainWindow(QMainWindow):
         self.cam_ready = False
         self.ai_ready = False
         self.home_page.toggle_btn.setText("Start Sevue")
+        self.home_page.toggle_btn.setChecked(False)
         self.home_page.toggle_btn.setEnabled(True)
         self.camera_running = False
 
@@ -507,6 +520,7 @@ class MainWindow(QMainWindow):
             return
         self.camera_running = True
         self.home_page.toggle_btn.setText("stop Sevue")
+        self.home_page.toggle_btn.setChecked(True)
         self.home_page.toggle_btn.setEnabled(True)
 
     def toggle_camera(self):
@@ -595,6 +609,7 @@ class MainWindow(QMainWindow):
     def show_home(self):
         self.setWindowTitle("Sevue")
         self.stack.setCurrentIndex(0)
+        self.home_page.toggle_btn.setChecked(self.camera_running)
 
     def dispatch_action(self, action):
         if action == "hide":
@@ -629,47 +644,161 @@ class SettingsPage(QWidget):
         super().__init__(main)
         STATE.changed.connect(self.on_state_changed)
         self.main = main
-        back_btn = QPushButton("Back")
-        back_btn.clicked.connect(self.main.show_home)
-        layout = QVBoxLayout()
-        self.preview = QLabel("Live Preview")
-        self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(320, 240)
-        self.preview.setStyleSheet(
+        self.setStyleSheet(
             """
-            QLabel {
-                border: 2px solid black;
+            SettingsPage {
+                background: #f3f3f3;
+                font-family: "Segoe UI";
+                color: #1f1f1f;
+            }
+            QLabel#pageTitle {
+                font-size: 22px;
+                font-weight: 600;
+            }
+            QLabel#sectionTitle {
+                font-size: 14px;
+                font-weight: 600;
+                color: #2b2b2b;
+            }
+            QLineEdit#searchBox {
+                padding: 8px 10px;
+                border: 1px solid #d0d0d0;
+                border-radius: 10px;
+                background: white;
+            }
+            QListWidget#navList {
+                background: transparent;
+                border: none;
+                padding: 6px 0;
+            }
+            QListWidget#navList::item {
+                padding: 8px 10px;
+                border-radius: 8px;
+            }
+            QListWidget#navList::item:selected {
+                background: #3a3a3a;
+                color: #f2f2f2;
+            }
+            QFrame#card {
+                background: white;
+                border: 1px solid #e1e1e1;
+                border-radius: 12px;
+            }
+            QLabel#cardTitle {
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLabel#cardSubtitle {
+                font-size: 12px;
+                color: #5f5f5f;
+            }
+            QPushButton#backBtn {
+                padding: 6px 12px;
+                border: 1px solid #d0d0d0;
+                border-radius: 8px;
+                background: white;
+            }
+            QPushButton#backBtn:hover {
+                background: #f0f0f0;
+            }
+            QLabel#preview {
+                border: 1px solid #d0d0d0;
+                border-radius: 10px;
                 background: #111;
                 color: white;
             }
         """
         )
 
-        layout.addWidget(self.preview)
+        root = QHBoxLayout()
+        root.setContentsMargins(18, 18, 18, 18)
+        root.setSpacing(18)
+
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(12)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        title = QLabel("Settings")
+        title.setObjectName("pageTitle")
+        search = QLineEdit()
+        search.setObjectName("searchBox")
+        search.setPlaceholderText("Find a setting")
+        search.setReadOnly(True)
+
+        nav = QListWidget()
+        nav.setObjectName("navList")
+        for item in ("General", "Video", "Accessibility", "Advanced"):
+            nav.addItem(item)
+        nav.setCurrentRow(0)
+
+        left_layout.addWidget(title)
+        left_layout.addWidget(search)
+        left_layout.addWidget(nav)
+        left_layout.addStretch()
+        left_panel.setLayout(left_layout)
+        left_panel.setFixedWidth(240)
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+        right_layout.setSpacing(14)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        header_row = QHBoxLayout()
+        back_btn = QPushButton("Back")
+        back_btn.setObjectName("backBtn")
+        back_btn.clicked.connect(self.main.show_home)
+        header = QLabel("General")
+        header.setObjectName("sectionTitle")
+        header_row.addWidget(back_btn)
+        header_row.addSpacing(8)
+        header_row.addWidget(header)
+        header_row.addStretch()
+
+        preview_card = self.card_container()
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.setContentsMargins(16, 14, 16, 16)
+        preview_layout.setSpacing(10)
+        preview_title = QLabel("Device preview")
+        preview_title.setObjectName("cardTitle")
+        self.preview = QLabel("Live Preview")
+        self.preview.setObjectName("preview")
+        self.preview.setAlignment(Qt.AlignCenter)
+        self.preview.setMinimumSize(360, 220)
+        preview_layout.addWidget(preview_title)
+        preview_layout.addWidget(self.preview)
+
+        right_layout.addLayout(header_row)
+        right_layout.addWidget(preview_card)
+
         self.toggles = {}
         for action, cfg in self.iter_setting_features():
-            row, checkbox = self.option(cfg)
+            card, checkbox = self.option(cfg)
             self.toggles[action] = checkbox
-            layout.addLayout(row)
-        layout.addStretch()
-        layout.addWidget(back_btn)
-        self.setLayout(layout)
+            right_layout.addWidget(card)
+
+        right_layout.addStretch()
+        right_panel.setLayout(right_layout)
+
+        root.addWidget(left_panel)
+        root.addWidget(right_panel, 1)
+        self.setLayout(root)
 
     def toggle_style(self):
         return """
         QCheckBox::indicator {
-            width: 40px;
-            height: 20px;
+            width: 46px;
+            height: 22px;
         }
         QCheckBox::indicator:unchecked {
-            border: 1px solid black;
-            border-radius: 10px;
-            background: white;
+            border: 1px solid #bdbdbd;
+            border-radius: 11px;
+            background: #f8f8f8;
         }
         QCheckBox::indicator:checked {
-            border: 1px solid black;
-            border-radius: 10px;
-            background: black;
+            border: 1px solid #2a67f5;
+            border-radius: 11px;
+            background: #2a67f5;
         }
         """
 
@@ -703,9 +832,27 @@ class SettingsPage(QWidget):
         )
 
     def option(self, cfg):
-        row = QHBoxLayout()
+        descriptions = {
+            "Flip Camera": "Mirror your camera feed for a more natural preview.",
+            "Flip Subtitles": "Reverse subtitle placement for mirrored view.",
+            "Flip Hands": "Mirror detected hand labels in the preview.",
+            "hand Debug": "Show hand landmark overlays for diagnostics.",
+        }
+        card = self.card_container()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(16, 12, 16, 12)
+        row.setSpacing(10)
 
+        label_wrap = QVBoxLayout()
+        label_wrap.setSpacing(3)
         label = QLabel(cfg["label"])
+        label.setObjectName("cardTitle")
+        subtitle = QLabel(descriptions.get(cfg["label"], ""))
+        subtitle.setObjectName("cardSubtitle")
+        label_wrap.addWidget(label)
+        if subtitle.text():
+            label_wrap.addWidget(subtitle)
+
         toggle = QCheckBox()
         toggle.setStyleSheet(self.toggle_style())
         label.setBuddy(toggle)
@@ -716,11 +863,16 @@ class SettingsPage(QWidget):
             lambda v, attr=state_attr: STATE.set_flag(attr, bool(v))
         )
 
-        row.addWidget(label)
+        row.addLayout(label_wrap)
         row.addStretch()
         row.addWidget(toggle)
 
-        return row, toggle
+        return card, toggle
+
+    def card_container(self):
+        card = QFrame()
+        card.setObjectName("card")
+        return card
 
 
 class Frame:
