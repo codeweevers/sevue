@@ -38,6 +38,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from functools import partial
 import sys
+import json
 
 
 mp_hands = mp.tasks.vision.HandLandmarksConnections
@@ -54,6 +55,7 @@ COMMON_RESOLUTIONS = [
 ]
 DEFAULT_FPS = 30
 AI_FRAME_SIZE = (640, 480)
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 
 
 class State(QObject):
@@ -64,6 +66,10 @@ class State(QObject):
         self.FLIP_VIDEO = True
         self.FLIP_TEXT = False
         self.FLIP_HANDS = False
+        self._word_buffer = []
+        self._last_appended_word = None
+        self._last_word = None
+        self._last_word_time = 0.0
         self._text = ""
         self._hand_labels = []
         self._confidence = 0.0
@@ -74,7 +80,6 @@ class State(QObject):
         self._hand_landmarks = None
         self._subtitle = {
             "text": "",
-            "confidence": 0.0,
             "start": 0.0,
             "duration": 2.5,
         }
@@ -112,11 +117,38 @@ class State(QObject):
                 "shortcut": "Esc",
             },
         }
+        DEFAULT_CONFIG = {
+            "conf": {
+                "flip_video": True,
+                "flip_subtitles": False,
+                "flip_hands": False,
+                "toggle_debug": False,
+            },
+            "shortcuts": {
+                "flip_video": "C",
+                "flip_subtitles": "O",
+                "flip_hands": "H",
+                "toggle_debug": "D",
+            },
+        }
+        self.config = {
+            "conf": {
+                "flip_video": self.FLIP_VIDEO,
+                "flip_subtitles": self.FLIP_TEXT,
+                "flip_hands": self.FLIP_HANDS,
+                "toggle_debug": self.SHOW_HAND_DEBUG,
+            },
+            "shortcuts": {
+                "flip_video": self.FEATURES["flip_camera"]["shortcut"],
+                "flip_subtitles": self.FEATURES["flip_subtitles"]["shortcut"],
+                "flip_hands": self.FEATURES["flip_hands"]["shortcut"],
+                "toggle_debug": self.FEATURES["toggle_debug"]["shortcut"],
+            },
+        }
 
-    def set_subtitle(self, text, confidence, duration=2.5):
+    def set_subtitle(self, text, duration=2.5):
         with self._lock:
             self._subtitle["text"] = text
-            self._subtitle["confidence"] = confidence
             self._subtitle["start"] = time.time()
             self._subtitle["duration"] = duration
 
@@ -141,9 +173,39 @@ class State(QObject):
             setattr(self, name, value)
         self.changed.emit(name)
 
+    def append_word(self, word):
+        with self._lock:
+            self._word_buffer.append(word)
+
+    def get_buffer_text(self):
+        with self._lock:
+            return " ".join(self._word_buffer)
+
+    def clear_buffer(self):
+        with self._lock:
+            self._word_buffer.clear()
+
     def get_hand_landmarks(self):
         with self._lock:
             return self._hand_landmarks
+
+    def save_config(self):
+        with open(config_path, "w") as f:
+            json.dump(self.config, f, indent=4)
+
+        # def load_config(self):
+        #     # If config doesn't exist → create it
+        #     if not os.path.exists(config_path):
+        #         self.config = json.loads(json.dumps(self.DEFAULT_CONFIG))
+        #         self.apply_config()
+        #         self.save_config()
+        #         return
+
+        #     # Load existing config
+        #     with open(config_path, "r") as f:
+        #         self.config = json.load(f)
+
+        #     self.apply_config()
 
 
 class WorkerThread(QThread):
@@ -178,9 +240,9 @@ class AIThread(WorkerThread):
             options = GestureRecognizerOptions(
                 base_options=BaseOptions(model_asset_buffer=data),
                 num_hands=2,
-                min_hand_detection_confidence=0.4,
-                min_hand_presence_confidence=0.4,
-                min_tracking_confidence=0.4,
+                min_hand_detection_confidence=0.65,
+                min_hand_presence_confidence=0.65,
+                min_tracking_confidence=0.65,
                 running_mode=VisionRunningMode.IMAGE,
             )
             recognizer = GestureRecognizer.create_from_options(options)
@@ -218,15 +280,26 @@ class AIThread(WorkerThread):
                 if result.gestures:
                     gesture = result.gestures[0][0]
                     if gesture.score >= CONF_THRESHOLD:
-                        STATE.set_subtitle(
-                            gesture.category_name,
-                            gesture.score,
-                            duration=2.5,
-                        )
-                    else:
-                        STATE.set_subtitle("", 0.0, duration=2.5)
+                        word = gesture.category_name
+                        now = time.time()
+                        if word != STATE._last_word:
+                            STATE._last_word = word
+                            STATE._last_word_time = now
+                        elif (
+                            word == STATE._last_word
+                            and word != STATE._last_appended_word
+                            and (now - STATE._last_word_time) > 0.2
+                        ):
+                            STATE.append_word(word)
+                            STATE._last_appended_word = word
+                        sentence = STATE.get_buffer_text()
+                        if sentence:
+                            STATE.set_subtitle(sentence, duration=3.0)
                 else:
-                    STATE.set_subtitle("", 0.0, duration=2.5)
+                    if time.time() - STATE._last_word_time > 2.0:
+                        STATE.clear_buffer()
+                        STATE._last_word = None
+                        STATE._last_appended_word = None
         finally:
             recognizer.close()
             return
@@ -286,7 +359,6 @@ class CameraThread(WorkerThread):
                 frame = render_youtube_cc_prediction(
                     frame=frame,
                     text=subtitle["text"],
-                    confidence=subtitle["confidence"],
                     start_time=subtitle["start"],
                     duration=subtitle["duration"],
                     current_time=now,
@@ -449,7 +521,7 @@ class MainWindow(QMainWindow):
             self.cam_thread.start()
             self.ai_thread.start()
         else:
-            self.home_page.toggle_btntoggle_btn.setEnabled(False)
+            self.home_page.toggle_btn.setEnabled(False)
             self.home_page.toggle_btn.setText("Sevue is Stopping…")
             self.stop_event.set()
             if self.cam_thread:
