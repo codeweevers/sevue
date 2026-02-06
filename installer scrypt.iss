@@ -14,13 +14,19 @@
 AppId={{A94B0FBA-82BB-45DD-AAFC-A58CC2FF2D21}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-;AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppName}
+DisableWelcomePage=no
+DisableDirPage=yes
+DisableReadyMemo=yes
+DefaultGroupName={#MyAppName}
+CloseApplications=yes
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
+AllowCancelDuringInstall=no
 ; "ArchitecturesAllowed=x64compatible" specifies that Setup cannot run
 ; on anything but x64 and Windows 11 on Arm.
 ArchitecturesAllowed=x64compatible
@@ -29,14 +35,12 @@ ArchitecturesAllowed=x64compatible
 ; meaning it should use the native 64-bit Program Files directory and
 ; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
-DisableProgramGroupPage=yes
 LicenseFile=C:\Users\tech\Documents\GitHub\sevue\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 OutputDir=C:\Users\tech\Documents\GitHub\sevue\release
 OutputBaseFilename=sevue_setup
 SetupIconFile=C:\Users\tech\Documents\GitHub\sevue\icons\favicon.ico
-SolidCompression=yes
 WizardStyle=modern
 
 [Languages]
@@ -52,26 +56,18 @@ Source: "C:\Users\tech\Documents\GitHub\sevue\Install_SevueCam.bat"; DestDir: "{
 Source: "C:\Users\tech\Documents\GitHub\sevue\Uninstall_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter32.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter64.dll"; DestDir: "{app}"; Flags: ignoreversion
-; NOTE: Don't use "Flags: ignoreversion" on any shared system files
+
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Flags: runmaximized
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; Flags: runmaximized excludefromshowinnewinstall
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Flags: runmaximized
 
 [Run]
-Filename: "{app}\Install_SevueCam.bat"; StatusMsg: "Installing virtual camera driver..."; Flags: runascurrentuser; Check: not IsUnityCaptureInstalled()
+Filename: "{app}\Install_SevueCam.bat"; StatusMsg: "Installing virtual camera driver..."; Flags: runascurrentuser;
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 [UninstallRun] 
 Filename: "{app}\Uninstall_SevueCam.bat"; StatusMsg: "Uninstalling virtual camera driver..."; Flags: runascurrentuser
-[Code]
-function IsUnityCaptureInstalled(): Boolean;
-begin
-  Result :=
-    RegKeyExists(
-      HKLM,
-      'Software\{#MyAppPublisher}'
-    );
-end;
 
 [Registry]
 Root: HKLM; Subkey: "Software\{#MyAppPublisher}"; Flags: uninsdeletekey

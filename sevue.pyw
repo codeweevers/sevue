@@ -37,8 +37,18 @@ from PySide6.QtGui import (
     QKeySequence,
     QCloseEvent,
     QGuiApplication,
+    QPainter,
+    QColor,
 )
-from PySide6.QtCore import Qt, QThread, Signal, QObject
+from PySide6.QtCore import (
+    Qt,
+    QThread,
+    Signal,
+    QObject,
+    Property,
+    QPropertyAnimation,
+    QEasingCurve,
+)
 from functools import partial
 import sys
 import json
@@ -639,6 +649,60 @@ class MainWindow(QMainWindow):
         self.close()
 
 
+class Toggle(QCheckBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(50, 28)
+        self.setCursor(Qt.PointingHandCursor)
+        self._bg_color = QColor("#33333a")
+        self._circle_position = 3
+        self._radius = 11  # knob radius
+
+        self.animation = QPropertyAnimation(self, b"circlePosition", self)
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.setDuration(200)
+        self.stateChanged.connect(self.start_transition)
+
+    @Property(float)
+    def circlePosition(self):
+        return self._circle_position
+
+    @circlePosition.setter
+    def circlePosition(self, pos):
+        self._circle_position = pos
+        self.update()
+
+    def start_transition(self, value):
+        self.animation.stop()
+        if value:
+            self.animation.setEndValue(self.width() - 25)
+        else:
+            self.animation.setEndValue(3)
+        self.animation.start()
+
+    def hitButton(self, pos):
+        return self.rect().contains(pos)
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        # Draw Background
+        if self.isChecked():
+            p.setBrush(QColor("#2a67f5"))
+        else:
+            p.setBrush(QColor("#33333a"))  # Dark grey for unchecked
+
+        p.setPen(Qt.NoPen)
+        rect = self.rect()
+        p.drawRoundedRect(0, 0, rect.width(), rect.height(), 14, 14)
+
+        # Draw Circle (Knob)
+        p.setBrush(QColor("#ffffff"))
+        p.setPen(Qt.NoPen)
+        p.drawEllipse(int(self._circle_position), 3, 22, 22)
+
+
 class SettingsPage(QWidget):
     def __init__(self, main):
         super().__init__(main)
@@ -647,157 +711,216 @@ class SettingsPage(QWidget):
         self.setStyleSheet(
             """
             SettingsPage {
-                background: #f3f3f3;
-                font-family: "Segoe UI";
-                color: #1f1f1f;
+                background: #121214;
+                font-family: "Segoe UI", sans-serif;
+                color: #e0e0e0;
+            }
+            /* Sidebar styling */
+            QWidget#sidebar {
+                background: #1b1b1f;
+                border-right: 1px solid #2a2a30;
             }
             QLabel#pageTitle {
-                font-size: 22px;
-                font-weight: 600;
+                font-size: 26px;
+                font-weight: 700;
+                color: #ffffff;
+                margin-left: 4px;
             }
             QLabel#sectionTitle {
-                font-size: 14px;
+                font-size: 20px;
                 font-weight: 600;
-                color: #2b2b2b;
+                color: #ffffff;
+                margin-bottom: 8px;
             }
-            QLineEdit#searchBox {
-                padding: 8px 10px;
-                border: 1px solid #d0d0d0;
-                border-radius: 10px;
-                background: white;
-            }
+
             QListWidget#navList {
                 background: transparent;
                 border: none;
-                padding: 6px 0;
+                padding: 4px 0;
             }
             QListWidget#navList::item {
-                padding: 8px 10px;
-                border-radius: 8px;
+                padding: 12px 16px;
+                border-radius: 10px;
+                margin-bottom: 4px;
+                color: #90909a;
+                font-weight: 500;
+                font-size: 15px;
+            }
+            QListWidget#navList::item:hover {
+                background: #2a2a33;
+                color: #ffffff;
             }
             QListWidget#navList::item:selected {
-                background: #3a3a3a;
-                color: #f2f2f2;
+                background: #2a67f5;
+                color: white;
             }
+            
+            /* Content Area */
             QFrame#card {
-                background: white;
-                border: 1px solid #e1e1e1;
-                border-radius: 12px;
+                background: #1b1b1f;
+                border: 1px solid #2a2a30;
+                border-radius: 16px;
             }
             QLabel#cardTitle {
-                font-size: 13px;
+                font-size: 16px;
                 font-weight: 600;
+                color: #ffffff;
+                margin-bottom: 2px;
             }
             QLabel#cardSubtitle {
-                font-size: 12px;
-                color: #5f5f5f;
+                font-size: 13px;
+                color: #888899;
+                line-height: 1.3;
             }
             QPushButton#backBtn {
-                padding: 6px 12px;
-                border: 1px solid #d0d0d0;
+                padding: 4px 10px;
+                border: 1px solid #33333a;
                 border-radius: 8px;
-                background: white;
+                background: #232329;
+                color: #e0e0e0;
+                font-weight: 600;
+                font-size: 11px;
+                text-align: center;
             }
             QPushButton#backBtn:hover {
-                background: #f0f0f0;
+                background: #2a2a33;
+                border-color: #555;
             }
             QLabel#preview {
-                border: 1px solid #d0d0d0;
-                border-radius: 10px;
-                background: #111;
-                color: white;
+                border: 1px solid #2a2a30;
+                border-radius: 12px;
+                background: #000;
+                color: #555;
+            }
+            /* Scrollbar */
+            QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 8px;
+            }
+            QScrollBar::handle:vertical {
+                background: #33333a;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #444455;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """
         )
 
         root = QHBoxLayout()
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(18)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        left_panel = QWidget()
-        left_layout = QVBoxLayout()
-        left_layout.setSpacing(12)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        # --- Sidebar ---
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar_layout = QVBoxLayout()
+        sidebar_layout.setContentsMargins(24, 32, 24, 24)
+        sidebar_layout.setSpacing(16)
 
         title = QLabel("Settings")
         title.setObjectName("pageTitle")
-        search = QLineEdit()
-        search.setObjectName("searchBox")
-        search.setPlaceholderText("Find a setting")
-        search.setReadOnly(True)
+
+        # Back Button in Sidebar
+        back_btn = QPushButton("← Back")
+        back_btn.setObjectName("backBtn")
+        back_btn.setFixedSize(70, 26)  # Make it small and fixed
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.clicked.connect(self.main.show_home)
 
         nav = QListWidget()
         nav.setObjectName("navList")
-        for item in ("General", "Video", "Accessibility", "Advanced"):
-            nav.addItem(item)
+        nav_items = [
+            ("General", "sliders"),
+            ("Video", "camera"),
+            ("Accessibility", "user"),
+            ("Advanced", "cpu"),
+        ]
+        for name, icon in nav_items:
+            nav.addItem(name)
         nav.setCurrentRow(0)
 
-        left_layout.addWidget(title)
-        left_layout.addWidget(search)
-        left_layout.addWidget(nav)
-        left_layout.addStretch()
-        left_panel.setLayout(left_layout)
-        left_panel.setFixedWidth(240)
+        sidebar_layout.addWidget(back_btn, 0, Qt.AlignLeft)
+        sidebar_layout.addWidget(title)
+        sidebar_layout.addWidget(nav)
+        sidebar_layout.addStretch()
+        sidebar.setLayout(sidebar_layout)
+        sidebar.setFixedWidth(280)
 
-        right_panel = QWidget()
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(14)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        # --- Content Area ---
+        content_panel = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(40, 32, 40, 32)
+        content_layout.setSpacing(24)
 
+        # Header
         header_row = QHBoxLayout()
-        back_btn = QPushButton("Back")
-        back_btn.setObjectName("backBtn")
-        back_btn.clicked.connect(self.main.show_home)
-        header = QLabel("General")
-        header.setObjectName("sectionTitle")
-        header_row.addWidget(back_btn)
-        header_row.addSpacing(8)
-        header_row.addWidget(header)
+        header_row.setSpacing(16)
+
+        section_title = QLabel("General")
+        section_title.setObjectName("sectionTitle")
+
+        header_row.addWidget(section_title)
         header_row.addStretch()
 
+        # Preview Section
         preview_card = self.card_container()
         preview_layout = QVBoxLayout(preview_card)
-        preview_layout.setContentsMargins(16, 14, 16, 16)
-        preview_layout.setSpacing(10)
-        preview_title = QLabel("Device preview")
-        preview_title.setObjectName("cardTitle")
-        self.preview = QLabel("Live Preview")
+        preview_layout.setContentsMargins(20, 20, 20, 20)
+        preview_layout.setSpacing(12)
+
+        p_title = QLabel("Device Preview")
+        p_title.setObjectName("cardTitle")
+
+        self.preview = QLabel("Waiting for camera...")
         self.preview.setObjectName("preview")
         self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(360, 220)
-        preview_layout.addWidget(preview_title)
+        self.preview.setMinimumSize(480, 270)
+        self.preview.setSizePolicy(
+            self.preview.sizePolicy().horizontalPolicy(),
+            self.preview.sizePolicy().verticalPolicy(),
+        )
+
+        preview_layout.addWidget(p_title)
         preview_layout.addWidget(self.preview)
 
-        right_layout.addLayout(header_row)
-        right_layout.addWidget(preview_card)
+        content_layout.addLayout(header_row)
+        content_layout.addWidget(preview_card)
 
+        # Toggles Grid
         self.toggles = {}
         for action, cfg in self.iter_setting_features():
             card, checkbox = self.option(cfg)
             self.toggles[action] = checkbox
-            right_layout.addWidget(card)
+            content_layout.addWidget(card)
 
-        right_layout.addStretch()
-        right_panel.setLayout(right_layout)
+        content_layout.addStretch()
+        content_panel.setLayout(content_layout)
 
-        root.addWidget(left_panel)
-        root.addWidget(right_panel, 1)
+        root.addWidget(sidebar)
+        root.addWidget(content_panel, 1)
         self.setLayout(root)
 
     def toggle_style(self):
         return """
+        QCheckBox {
+            spacing: 0px;
+        }
         QCheckBox::indicator {
-            width: 46px;
-            height: 22px;
+            width: 50px;
+            height: 28px;
         }
         QCheckBox::indicator:unchecked {
-            border: 1px solid #bdbdbd;
-            border-radius: 11px;
-            background: #f8f8f8;
+            border-radius: 14px;
+            background: #2a2a30;
+            image: url(none);
         }
         QCheckBox::indicator:checked {
-            border: 1px solid #2a67f5;
-            border-radius: 11px;
+            border-radius: 14px;
             background: #2a67f5;
         }
         """
@@ -833,28 +956,35 @@ class SettingsPage(QWidget):
 
     def option(self, cfg):
         descriptions = {
-            "Flip Camera": "Mirror your camera feed for a more natural preview.",
-            "Flip Subtitles": "Reverse subtitle placement for mirrored view.",
-            "Flip Hands": "Mirror detected hand labels in the preview.",
-            "hand Debug": "Show hand landmark overlays for diagnostics.",
+            "Flip Camera": "Mirror the video feed horizontally for a natural reflection.",
+            "Flip Subtitles": "Reverse text direction when looking into a mirror.",
+            "Flip Hands": "Adjust hand tracking coordinates for mirrored display.",
+            "hand Debug": "Visualize tracking landmarks and skeletal connections.",
         }
         card = self.card_container()
         row = QHBoxLayout(card)
-        row.setContentsMargins(16, 12, 16, 12)
-        row.setSpacing(10)
+        row.setContentsMargins(20, 16, 20, 16)
+        row.setSpacing(16)
 
         label_wrap = QVBoxLayout()
-        label_wrap.setSpacing(3)
+        label_wrap.setSpacing(4)
+
         label = QLabel(cfg["label"])
         label.setObjectName("cardTitle")
+
         subtitle = QLabel(descriptions.get(cfg["label"], ""))
         subtitle.setObjectName("cardSubtitle")
+        subtitle.setWordWrap(True)
+
         label_wrap.addWidget(label)
         if subtitle.text():
             label_wrap.addWidget(subtitle)
 
-        toggle = QCheckBox()
-        toggle.setStyleSheet(self.toggle_style())
+        toggle = Toggle()
+        # toggle.setCursor(Qt.PointingHandCursor) # Handled in class
+
+        # CSS removed - using custom paint
+
         label.setBuddy(toggle)
         state_attr = cfg["state"]
         toggle.setChecked(getattr(STATE, state_attr))
@@ -864,7 +994,6 @@ class SettingsPage(QWidget):
         )
 
         row.addLayout(label_wrap)
-        row.addStretch()
         row.addWidget(toggle)
 
         return card, toggle
