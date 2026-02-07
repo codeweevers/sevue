@@ -53,6 +53,35 @@ from functools import partial
 import sys
 import json
 
+import platform
+import glob
+import subprocess
+
+def get_virtual_cam_device(preferred_name="SevueCam"):
+    system = platform.system().lower()
+
+    # Windows: device name works
+    if system == "windows":
+        return preferred_name
+
+    # Linux: find /dev/video* with matching card_label
+    if system == "linux":
+        for dev in sorted(glob.glob("/dev/video*")):
+            try:
+                out = subprocess.check_output(
+                    ["v4l2-ctl", "--device", dev, "--all"],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                if preferred_name in out:
+                    return dev
+            except Exception:
+                pass
+
+        # fallback: let pyvirtualcam auto-pick
+        return None
+
+    return None
 
 mp_hands = mp.tasks.vision.HandLandmarksConnections
 mp_drawing = mp.tasks.vision.drawing_utils
@@ -331,7 +360,7 @@ class CameraThread(WorkerThread):
         super().__init__(stop_event)
 
     def run(self):
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             print("ERROR: Could not open camera")
             return
@@ -354,8 +383,9 @@ class CameraThread(WorkerThread):
             height=height,
             fps=fps,
             fmt=PixelFormat.RGB,
-            backend="unitycapture",
+            device=get_virtual_cam_device("Sevue-VirtualCam")
         ) as cam:
+            print("Using virtual cam:", cam.device)
             self.cam_ready.emit()
             retry_count = 0
             max_retries = 5
