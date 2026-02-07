@@ -425,53 +425,105 @@ class HomePage(QWidget):
     def __init__(self, main):
         super().__init__(main)
         self.main = main
-        logo = QLabel()
-        logo.setAlignment(Qt.AlignCenter)
-        logo_path = os.path.join(STATE.BASE_DIR, "icons", "logo.png")
-        pixmap = QPixmap(logo_path)
-        logo.setPixmap(
-            pixmap.scaled(200, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        )
-        logo.setAccessibleName("SEVUE logo")
-        # Buttons
-        self.toggle_btn = QPushButton("Start Sevue")
-        self.toggle_btn.setAutoRepeat(False)
-        self.toggle_btn.setCheckable(True)
-        self.toggle_btn.clicked.connect(self.main.toggle_camera)
-        settings_btn = QPushButton("Settings")
 
-        for btn in (self.toggle_btn, settings_btn):
-            btn.setFixedHeight(40)
-            btn.setStyleSheet(
-                """
-                QPushButton {
-                    border: 1px solid #bdbdbd;
-                    border-radius: 20px;
-                    font-size: 14px;
-                    padding: 6px 14px;
-                    background: #1E90FF;
-                    color: #1f1f1f;
-                }
-                QPushButton:checked {
-                    background: #2a67f5;
-                    color: white;
-                    border: 1px solid #2a67f5;
-                }
-                QPushButton:hover {
-                    background-color: #ededed;
-                }
+        self.setStyleSheet(
             """
-            )
-
-        settings_btn.clicked.connect(self.main.show_settings)
+            HomePage {
+                background: #121214;
+            }
+            QLabel#logo {
+                background: transparent;
+            }
+            QPushButton {
+                font-family: "Segoe UI", sans-serif;
+                font-size: 16px;
+                font-weight: 600;
+                border-radius: 14px;
+                padding: 16px;
+                border: none;
+            }
+            
+            /* Primary Button (Start/Stop) */
+            QPushButton#mainBtn {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a67f5, stop:1 #00c6ff);
+                color: white;
+            }
+            QPushButton#mainBtn:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3b7dff, stop:1 #33d1ff);
+            }
+            QPushButton#mainBtn:checked {
+                background: #2a2a30; /* Darker state for 'Stop' or active */
+                border: 2px solid #ff4b4b;
+                color: #ff4b4b;
+            }
+            QPushButton#mainBtn:checked:hover {
+                background: #33333a;
+            }
+            
+            /* Secondary Button (Settings) */
+            QPushButton#settingsBtn {
+                background: #1b1b1f;
+                color: #e0e0e0;
+                border: 1px solid #33333a;
+            }
+            QPushButton#settingsBtn:hover {
+                background: #2a2a33;
+                border: 1px solid #4a4a55;
+            }
+            """
+        )
 
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(15)
+        layout.setSpacing(40)
+        layout.setContentsMargins(40, 60, 40, 60)
 
+        # Logo
+        logo = QLabel()
+        logo.setObjectName("logo")
+        logo.setAlignment(Qt.AlignCenter)
+        logo_path = os.path.join(STATE.BASE_DIR, "icons", "logo.png")
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
+            logo.setPixmap(
+                pixmap.scaled(240, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+        else:
+            logo.setText("SEVUE")
+            logo.setStyleSheet(
+                "font-size: 64px; font-weight: 800; color: white; letter-spacing: 4px;"
+            )
+
+        logo.setAccessibleName("SEVUE logo")
+
+        # Buttons Container
+        btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(16)
+        btn_layout.setAlignment(Qt.AlignCenter)
+
+        self.toggle_btn = QPushButton("Start Sevue")
+        self.toggle_btn.setObjectName("mainBtn")
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.setFixedSize(260, 56)
+        self.toggle_btn.setAutoRepeat(False)
+        self.toggle_btn.setCheckable(True)
+        self.toggle_btn.clicked.connect(self.main.toggle_camera)
+
+        settings_btn = QPushButton("Settings")
+        settings_btn.setObjectName("settingsBtn")
+        settings_btn.setCursor(Qt.PointingHandCursor)
+        settings_btn.setFixedSize(260, 56)
+        settings_btn.clicked.connect(self.main.show_settings)
+
+        btn_layout.addWidget(self.toggle_btn)
+        btn_layout.addWidget(settings_btn)
+
+        layout.addStretch()
         layout.addWidget(logo)
-        layout.addWidget(self.toggle_btn)
-        layout.addWidget(settings_btn)
+        layout.addSpacing(20)
+        layout.addLayout(btn_layout)
+        layout.addStretch()
+
         self.setLayout(layout)
 
 
@@ -737,6 +789,7 @@ class SettingsPage(QWidget):
                 background: transparent;
                 border: none;
                 padding: 4px 0;
+                outline: 0;
             }
             QListWidget#navList::item {
                 padding: 12px 16px;
@@ -751,8 +804,9 @@ class SettingsPage(QWidget):
                 color: #ffffff;
             }
             QListWidget#navList::item:selected {
-                background: #2a67f5;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a67f5, stop:1 #00c6ff);
                 color: white;
+                border: 1px solid #4ea4f6;
             }
             
             /* Content Area */
