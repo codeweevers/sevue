@@ -1,7 +1,7 @@
 build/
 dist/
-hands/
 .*/
 __pycache__/
-release/
-config.json
+train_installer_gen/release/
+data/
+train_installer_gen/data/

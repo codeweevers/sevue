@@ -8,7 +8,7 @@ from mediapipe_model_maker import gesture_recognizer
 import matplotlib.pyplot as plt
 
 data = gesture_recognizer.Dataset.from_folder(
-    dirname="hands",
+    dirname="data",
     hparams=gesture_recognizer.HandDataPreprocessingParams(shuffle=True),
 )
 train_data, rest_data = data.split(0.8)

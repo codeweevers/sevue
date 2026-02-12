@@ -38,9 +38,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile=C:\Users\tech\Documents\GitHub\sevue\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-OutputDir=C:\Users\tech\Documents\GitHub\sevue\release
+OutputDir=release
 OutputBaseFilename=sevue_setup
-SetupIconFile=C:\Users\tech\Documents\GitHub\sevue\icons\favicon.ico
+SetupIconFile=..\icons
 WizardStyle=modern
 
 [Languages]
@@ -50,12 +50,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\tech\Documents\GitHub\sevue\dist\Sevue\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\tech\Documents\GitHub\sevue\dist\Sevue\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\Users\tech\Documents\GitHub\sevue\Install_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\tech\Documents\GitHub\sevue\Uninstall_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter32.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\tech\Documents\GitHub\sevue\UnityCaptureFilter64.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Sevue\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\Sevue\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "Install_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Uninstall_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "UnityCaptureFilter32.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "UnityCaptureFilter64.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Icons]

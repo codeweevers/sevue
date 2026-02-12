@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['sevue.pyw'],
+    ['..\\sevue.pyw'],
     pathex=[],
-    binaries=[('libmediapipe.so', 'mediapipe/tasks/c')],
-    datas=[('model', 'model'), ('icons', 'icons')],
+    binaries=[('..\\libmediapipe.dll', 'mediapipe\\tasks\\c')],
+    datas=[('..\\data', 'data'), ('icons', 'icons')],
     hiddenimports=['mediapipe', 'pyvirtualcam', 'cv2', 'mediapipe.tasks.c'],
     hookspath=[],
     hooksconfig={},
@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icons\\favicon.ico'],
+    icon=['..\\icons\\favicon.ico'],
 )
 coll = COLLECT(
     exe,
