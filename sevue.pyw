@@ -195,7 +195,7 @@ class State(QObject):
                 "shortcut": "Esc",
             },
         }
-        self.config_path = os.path.join(self.BASE_DIR, "config.json")
+        self.config_path = os.path.join(self.BASE_DIR, "data", "config.json")
         self.config = self.default_config()
         self.load_config()
 
