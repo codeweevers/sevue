@@ -4,4 +4,4 @@ hands/
 .*/
 __pycache__/
 release/
-config.cfg
+config.json
