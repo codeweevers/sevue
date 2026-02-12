@@ -1,9 +1,9 @@
-#               KEYBINDS
+﻿#               KEYBINDS
 # -----------------SEVUE-----------------
-#   Flip subtitles  -   O
-#   Flip camera     -   C
-#   hide to tray -   Esc
-# enable debug lines - d
+#   Flip subtitles  -   Ctrl+Shift+O
+#   Flip camera     -   Ctrl+Shift+C
+#   hide to tray    -   Esc
+#   debug lines     -   Ctrl+Shift+D
 from subtitle_renderer import render_youtube_cc_prediction
 import os
 import cv2
@@ -27,7 +27,10 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QFrame,
     QListWidget,
-    QLineEdit,
+    QKeySequenceEdit,
+    QDialog,
+    QDialogButtonBox,
+    QScrollArea,
 )
 from PySide6.QtGui import (
     QImage,
@@ -48,6 +51,7 @@ from PySide6.QtCore import (
     Property,
     QPropertyAnimation,
     QEasingCurve,
+    QTimer,
 )
 from functools import partial
 import sys
@@ -56,6 +60,13 @@ import json
 import platform
 import glob
 import subprocess
+import re
+
+try:
+    from pynput import keyboard as pynput_keyboard
+except Exception:
+    pynput_keyboard = None
+
 
 def get_virtual_cam_device(preferred_name="SevueCam"):
     system = platform.system().lower()
@@ -83,6 +94,7 @@ def get_virtual_cam_device(preferred_name="SevueCam"):
 
     return None
 
+
 mp_hands = mp.tasks.vision.HandLandmarksConnections
 mp_drawing = mp.tasks.vision.drawing_utils
 mp_drawing_styles = mp.tasks.vision.drawing_styles
@@ -97,7 +109,7 @@ COMMON_RESOLUTIONS = [
 ]
 DEFAULT_FPS = 30
 AI_FRAME_SIZE = (640, 480)
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.cfg")
 
 
 class State(QObject):
@@ -117,6 +129,8 @@ class State(QObject):
         self._confidence = 0.0
         self.SHOW_HAND_DEBUG = False
         self.SHOW_PREVIEW = True
+        self.AUTO_START_CAMERA = False
+        self.ENABLE_HIDE_CLOSE_SHORTCUT = False
         self.BASE_DIR = self.resource_path("")
         self._lock = threading.Lock()
         self._hand_landmarks = None
@@ -126,67 +140,74 @@ class State(QObject):
             "duration": 2.5,
         }
         self.FEATURES = {
+            "auto_start_camera": {
+                "type": "state",
+                "state": "AUTO_START_CAMERA",
+                "label": "Start Camera on Launch",
+                "category": "General",
+                "configurable": True,
+            },
+            "enable_hide_close_shortcut": {
+                "type": "state",
+                "state": "ENABLE_HIDE_CLOSE_SHORTCUT",
+                "label": "Enable Hide/Close Shortcut",
+                "category": "General",
+                "configurable": True,
+            },
             "toggle_camera": {
                 "type": "action",
-                "shortcut": "S",
+                "label": "Start/Stop Camera",
+                "shortcut": "Ctrl+Shift+S",
+                "category": "General",
+                "configurable": True,
+            },
+            "hide_close": {
+                "type": "action",
+                "label": "Hide/Close Window",
+                "shortcut": "Ctrl+Shift+M",
+                "category": "General",
+                "configurable": True,
             },
             "flip_camera": {
                 "type": "state",
                 "state": "FLIP_VIDEO",
                 "label": "Flip Camera",
-                "shortcut": "C",
+                "shortcut": "Ctrl+Shift+C",
+                "category": "Video",
+                "configurable": True,
             },
             "flip_subtitles": {
                 "type": "state",
                 "state": "FLIP_TEXT",
                 "label": "Flip Subtitles",
-                "shortcut": "O",
+                "shortcut": "Ctrl+Shift+O",
+                "category": "Video",
+                "configurable": True,
             },
             "flip_hands": {
                 "type": "state",
                 "state": "FLIP_HANDS",
                 "label": "Flip Hands",
-                "shortcut": "H",
+                "shortcut": "Ctrl+Shift+H",
+                "category": "Video",
+                "configurable": True,
             },
             "toggle_debug": {
                 "type": "state",
                 "state": "SHOW_HAND_DEBUG",
                 "label": "hand Debug",
-                "shortcut": "D",
+                "shortcut": "Ctrl+Shift+D",
+                "category": "Video",
+                "configurable": True,
             },
             "hide": {
                 "type": "action",
+                "label": "Hide/Show Window",
                 "shortcut": "Esc",
             },
         }
-        DEFAULT_CONFIG = {
-            "conf": {
-                "flip_video": True,
-                "flip_subtitles": False,
-                "flip_hands": False,
-                "toggle_debug": False,
-            },
-            "shortcuts": {
-                "flip_video": "C",
-                "flip_subtitles": "O",
-                "flip_hands": "H",
-                "toggle_debug": "D",
-            },
-        }
-        self.config = {
-            "conf": {
-                "flip_video": self.FLIP_VIDEO,
-                "flip_subtitles": self.FLIP_TEXT,
-                "flip_hands": self.FLIP_HANDS,
-                "toggle_debug": self.SHOW_HAND_DEBUG,
-            },
-            "shortcuts": {
-                "flip_video": self.FEATURES["flip_camera"]["shortcut"],
-                "flip_subtitles": self.FEATURES["flip_subtitles"]["shortcut"],
-                "flip_hands": self.FEATURES["flip_hands"]["shortcut"],
-                "toggle_debug": self.FEATURES["toggle_debug"]["shortcut"],
-            },
-        }
+        self.config = self.default_config()
+        self.load_config()
 
     def resource_path(self, relative):
         if hasattr(sys, "_MEIPASS"):
@@ -218,6 +239,7 @@ class State(QObject):
     def set_flag(self, name, value):
         with self._lock:
             setattr(self, name, value)
+        self.save_config_for_state(name)
         self.changed.emit(name)
 
     def append_word(self, word):
@@ -236,23 +258,101 @@ class State(QObject):
         with self._lock:
             return self._hand_landmarks
 
+    def iter_configurable_features(self):
+        for action, cfg in self.FEATURES.items():
+            if cfg.get("configurable"):
+                yield action, cfg
+
+    def default_config(self):
+        features = {}
+        for action, cfg in self.iter_configurable_features():
+            item = {}
+            if cfg["type"] == "state":
+                item["state"] = bool(getattr(self, cfg["state"]))
+            if "shortcut" in cfg:
+                item["shortcut"] = cfg["shortcut"]
+            features[action] = item
+        return {"features": features}
+
+    def apply_config(self):
+        feature_data = self.config.get("features", {})
+        for action, data in feature_data.items():
+            cfg = self.FEATURES.get(action)
+            if not cfg or not cfg.get("configurable"):
+                continue
+            if cfg["type"] == "state" and "state" in data:
+                setattr(self, cfg["state"], bool(data["state"]))
+            shortcut = data.get("shortcut")
+            if isinstance(shortcut, str) and shortcut.strip():
+                shortcut = self.normalize_shortcut(shortcut)
+                if self.is_valid_shortcut(shortcut):
+                    cfg["shortcut"] = shortcut
+
+    def refresh_config_from_state(self):
+        self.config = self.default_config()
+
     def save_config(self):
-        with open(config_path, "w") as f:
+        self.refresh_config_from_state()
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=4)
 
-        # def load_config(self):
-        #     # If config doesn't exist → create it
-        #     if not os.path.exists(config_path):
-        #         self.config = json.loads(json.dumps(self.DEFAULT_CONFIG))
-        #         self.apply_config()
-        #         self.save_config()
-        #         return
+    def load_config(self):
+        if not os.path.exists(config_path):
+            self.save_config()
+            return
 
-        #     # Load existing config
-        #     with open(config_path, "r") as f:
-        #         self.config = json.load(f)
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                raise ValueError("invalid config root")
+        except Exception:
+            self.save_config()
+            return
 
-        #     self.apply_config()
+        self.config = self.default_config()
+        loaded_features = loaded.get("features", {})
+        if isinstance(loaded_features, dict):
+            for action, values in loaded_features.items():
+                if action in self.config["features"] and isinstance(values, dict):
+                    self.config["features"][action].update(values)
+        self.apply_config()
+        self.save_config()
+
+    def save_config_for_state(self, state_name):
+        for _, cfg in self.iter_configurable_features():
+            if cfg.get("type") == "state" and cfg.get("state") == state_name:
+                self.save_config()
+                return
+
+    def normalize_shortcut(self, shortcut):
+        if not isinstance(shortcut, str):
+            return ""
+        return QKeySequence(shortcut).toString(QKeySequence.PortableText).strip()
+
+    def is_valid_shortcut(self, shortcut):
+        normalized = self.normalize_shortcut(shortcut)
+        if not normalized or "," in normalized:
+            return False
+        parts = [p.strip() for p in normalized.split("+") if p.strip()]
+        if len(parts) < 2:
+            return False
+        modifiers = {"Ctrl", "Alt", "Shift", "Meta"}
+        has_modifier = any(p in modifiers for p in parts)
+        non_modifiers = [p for p in parts if p not in modifiers]
+        return has_modifier and len(non_modifiers) == 1
+
+    def set_shortcut(self, action, shortcut):
+        cfg = self.FEATURES.get(action)
+        if not cfg or "shortcut" not in cfg:
+            return False
+        normalized = self.normalize_shortcut(shortcut)
+        if not self.is_valid_shortcut(normalized):
+            return False
+        cfg["shortcut"] = normalized
+        self.save_config()
+        self.changed.emit(f"shortcut:{action}")
+        return True
 
 
 class WorkerThread(QThread):
@@ -383,7 +483,7 @@ class CameraThread(WorkerThread):
             height=height,
             fps=fps,
             fmt=PixelFormat.RGB,
-            device=get_virtual_cam_device("Sevue-VirtualCam")
+            device=get_virtual_cam_device("Sevue-VirtualCam"),
         ) as cam:
             print("Using virtual cam:", cam.device)
             self.cam_ready.emit()
@@ -412,25 +512,25 @@ class CameraThread(WorkerThread):
                     current_time=now,
                     flip_text=STATE.FLIP_TEXT,
                 )
-                h_labels = STATE.get_hand_labels()
-                ai_w, ai_h = AI_FRAME_SIZE
-                for label, x, y in h_labels:
-                    draw_x = int(x * width / ai_w)
-                    draw_y = int(y * height / ai_h)
-                    if STATE.FLIP_HANDS:
-                        draw_x = width - draw_x
-                    cv2.putText(
-                        frame,
-                        label,
-                        (draw_x, draw_y),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1.0,
-                        (0, 255, 0),
-                        3,
-                        cv2.LINE_AA,
-                    )
                 hand_landmarks = STATE.get_hand_landmarks()
                 if hand_landmarks and STATE.SHOW_HAND_DEBUG:
+                    h_labels = STATE.get_hand_labels()
+                    ai_w, ai_h = AI_FRAME_SIZE
+                    for label, x, y in h_labels:
+                        draw_x = int(x * width / ai_w)
+                        draw_y = int(y * height / ai_h)
+                        if STATE.FLIP_HANDS:
+                            draw_x = width - draw_x
+                        cv2.putText(
+                            frame,
+                            label,
+                            (draw_x, draw_y),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 255, 0),
+                            3,
+                            cv2.LINE_AA,
+                        )
                     for landmarks in hand_landmarks:
                         if STATE.FLIP_HANDS:
                             for lm in landmarks:
@@ -471,6 +571,7 @@ class HomePage(QWidget):
                 border-radius: 14px;
                 padding: 16px;
                 border: none;
+                outline: none;
             }
             
             /* Primary Button (Start/Stop) */
@@ -539,14 +640,14 @@ class HomePage(QWidget):
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.clicked.connect(self.main.toggle_camera)
 
-        settings_btn = QPushButton("Settings")
-        settings_btn.setObjectName("settingsBtn")
-        settings_btn.setCursor(Qt.PointingHandCursor)
-        settings_btn.setFixedSize(260, 56)
-        settings_btn.clicked.connect(self.main.show_settings)
+        self.settings_btn = QPushButton("Settings")
+        self.settings_btn.setObjectName("settingsBtn")
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        self.settings_btn.setFixedSize(260, 56)
+        self.settings_btn.clicked.connect(self.main.show_settings)
 
         btn_layout.addWidget(self.toggle_btn)
-        btn_layout.addWidget(settings_btn)
+        btn_layout.addWidget(self.settings_btn)
 
         layout.addStretch()
         layout.addWidget(logo)
@@ -556,9 +657,16 @@ class HomePage(QWidget):
 
         self.setLayout(layout)
 
+    def ensure_controls_visible(self):
+        self.toggle_btn.setVisible(True)
+        self.settings_btn.setVisible(True)
+        self.toggle_btn.raise_()
+        self.settings_btn.raise_()
+
 
 class MainWindow(QMainWindow):
     _instance = None
+    global_action = Signal(str)
 
     @staticmethod
     def instance():
@@ -567,6 +675,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.stack = QStackedWidget(self)
+        self.shortcuts = []
+        self.hide_shortcut = None
+        self.global_hotkey_listener = None
         MainWindow._instance = self
         self.setWindowTitle("Sevue")
         self.home_page = HomePage(self)
@@ -581,9 +692,37 @@ class MainWindow(QMainWindow):
         self.camera_running = False
         self.cam_ready = False
         self.ai_ready = False
+        self.toast_label = QLabel(self)
+        self.toast_label.setObjectName("shortcutToast")
+        self.toast_label.setStyleSheet(
+            """
+            QLabel#shortcutToast {
+                background: rgba(20, 20, 24, 220);
+                color: #f3f4f6;
+                border: 1px solid #3d3d46;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            """
+        )
+        self.toast_label.setVisible(False)
+        self.toast_label.setAccessibleName("Shortcut notification")
+        self.toast_label.setAccessibleDescription(
+            "Shows a short message when actions are triggered by keyboard shortcuts."
+        )
         self.setup_tray()
+        self.global_action.connect(self.on_global_action)
+        STATE.changed.connect(self.on_state_changed)
+        self.hide_shortcut = QShortcut(QKeySequence("Esc"), self)
+        self.hide_shortcut.activated.connect(
+            partial(self.dispatch_action, "hide", True)
+        )
         self.setup_shortcuts()
         self.update_tray_action()
+        if STATE.AUTO_START_CAMERA:
+            QTimer.singleShot(0, self.toggle_camera)
 
     def on_thread_finished(self):
         if (self.cam_thread and self.cam_thread.isRunning()) or (
@@ -618,7 +757,7 @@ class MainWindow(QMainWindow):
     def toggle_camera(self):
         if not self.camera_running:
             self.home_page.toggle_btn.setEnabled(False)
-            self.home_page.toggle_btn.setText("Sevue is Starting…")
+            self.home_page.toggle_btn.setText("Sevue is Startingâ€¦")
             self.stop_event = threading.Event()
             self.cam_ready = False
             self.ai_ready = False
@@ -633,7 +772,7 @@ class MainWindow(QMainWindow):
             self.ai_thread.start()
         else:
             self.home_page.toggle_btn.setEnabled(False)
-            self.home_page.toggle_btn.setText("Sevue is Stopping…")
+            self.home_page.toggle_btn.setText("Sevue is Stoppingâ€¦")
             self.stop_event.set()
             if self.cam_thread:
                 self.cam_thread.requestInterruption()
@@ -674,6 +813,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent):
         print("Close event received")
+        STATE.save_config()
+        self.stop_shortcuts()
         if self.stop_event:
             self.stop_event.set()
         if self.cam_thread and self.cam_thread.isRunning():
@@ -700,15 +841,22 @@ class MainWindow(QMainWindow):
 
     def show_home(self):
         self.setWindowTitle("Sevue")
-        self.stack.setCurrentIndex(0)
-        self.home_page.toggle_btn.setChecked(self.camera_running)
+        self.stack.setCurrentWidget(self.home_page)
+        self.home_page.ensure_controls_visible()
+        self.home_page.updateGeometry()
+        if self.home_page.layout():
+            self.home_page.layout().activate()
 
-    def dispatch_action(self, action):
+    def dispatch_action(self, action, from_shortcut=False):
         if action == "hide":
             if self.stack.currentIndex() == 1:
                 self.show_home()
+                if from_shortcut:
+                    self.show_toast("Switched to Home")
             else:
                 self.toggle_window_visibility()
+                if from_shortcut:
+                    self.show_toast("Window hidden/shown")
             return
         cfg = STATE.FEATURES.get(action)
         if not cfg:
@@ -719,13 +867,148 @@ class MainWindow(QMainWindow):
                 attr = cfg["state"]
                 new_value = not getattr(STATE, attr)
                 STATE.set_flag(attr, new_value)
+                if from_shortcut:
+                    label = cfg.get("label", action)
+                    state_text = "On" if new_value else "Off"
+                    self.show_toast(f"{label}: {state_text}")
+            case "action":
+                if action == "toggle_camera":
+                    self.toggle_camera()
+                    if from_shortcut:
+                        self.show_toast("Camera toggle requested")
+                elif action == "hide_close":
+                    self.dispatch_action("hide", from_shortcut)
 
     def setup_shortcuts(self):
+        self.stop_shortcuts()
+        if pynput_keyboard is None:
+            print(
+                "Warning: pynput is not installed. Falling back to in-app shortcuts only."
+            )
+            for action, cfg in STATE.FEATURES.items():
+                if action == "hide":
+                    continue
+                if "shortcut" not in cfg:
+                    continue
+                shortcut = QShortcut(QKeySequence(cfg["shortcut"]), self)
+                shortcut.activated.connect(partial(self.dispatch_action, action, True))
+                self.shortcuts.append(shortcut)
+            return
+
+        hotkeys = {}
         for action, cfg in STATE.FEATURES.items():
-            if "shortcut" not in cfg:
+            if action == "hide":
                 continue
-            shortcut = QShortcut(QKeySequence(cfg["shortcut"]), self)
-            shortcut.activated.connect(partial(self.dispatch_action, action))
+            if action == "hide_close" and not STATE.ENABLE_HIDE_CLOSE_SHORTCUT:
+                continue
+            shortcut = cfg.get("shortcut")
+            if not isinstance(shortcut, str):
+                continue
+            shortcut = STATE.normalize_shortcut(shortcut)
+            if not STATE.is_valid_shortcut(shortcut):
+                continue
+            pynput_shortcut = self.qt_shortcut_to_pynput(shortcut)
+            if not pynput_shortcut:
+                continue
+            if pynput_shortcut in hotkeys:
+                print(f"Warning: Duplicate shortcut {shortcut}; ignoring {action}.")
+                continue
+            hotkeys[pynput_shortcut] = partial(self.emit_global_action, action)
+
+        if not hotkeys:
+            return
+
+        self.global_hotkey_listener = pynput_keyboard.GlobalHotKeys(hotkeys)
+        self.global_hotkey_listener.start()
+
+    def stop_shortcuts(self):
+        for shortcut in self.shortcuts:
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self.shortcuts.clear()
+        if self.global_hotkey_listener:
+            self.global_hotkey_listener.stop()
+            self.global_hotkey_listener = None
+
+    def emit_global_action(self, action):
+        self.global_action.emit(action)
+
+    def on_global_action(self, action):
+        self.dispatch_action(action, True)
+
+    def qt_shortcut_to_pynput(self, shortcut):
+        parts = [p.strip() for p in shortcut.split("+") if p.strip()]
+        if not parts:
+            return None
+
+        modifiers = []
+        key_part = None
+        for p in parts:
+            if p == "Ctrl":
+                modifiers.append("<ctrl>")
+            elif p == "Alt":
+                modifiers.append("<alt>")
+            elif p == "Shift":
+                modifiers.append("<shift>")
+            elif p == "Meta":
+                modifiers.append("<cmd>")
+            else:
+                key_part = p
+
+        if not modifiers or not key_part:
+            return None
+
+        special_map = {
+            "Space": "<space>",
+            "Tab": "<tab>",
+            "Backspace": "<backspace>",
+            "Delete": "<delete>",
+            "Insert": "<insert>",
+            "Home": "<home>",
+            "End": "<end>",
+            "PgUp": "<page_up>",
+            "PgDown": "<page_down>",
+            "Left": "<left>",
+            "Right": "<right>",
+            "Up": "<up>",
+            "Down": "<down>",
+            "Enter": "<enter>",
+            "Return": "<enter>",
+            "Escape": "<esc>",
+            "Esc": "<esc>",
+        }
+
+        if re.fullmatch(r"F([1-9]|1[0-9]|2[0-4])", key_part):
+            key_token = f"<{key_part.lower()}>"
+        elif len(key_part) == 1:
+            key_token = key_part.lower()
+        else:
+            key_token = special_map.get(key_part)
+        if not key_token:
+            return None
+        return "+".join(modifiers + [key_token])
+
+    def on_state_changed(self, name):
+        if name.startswith("shortcut:") or name == "ENABLE_HIDE_CLOSE_SHORTCUT":
+            self.setup_shortcuts()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.toast_label.isVisible():
+            self.position_toast()
+
+    def position_toast(self):
+        self.toast_label.adjustSize()
+        margin = 16
+        x = max(margin, self.width() - self.toast_label.width() - margin)
+        y = max(margin, self.height() - self.toast_label.height() - margin)
+        self.toast_label.move(x, y)
+
+    def show_toast(self, message, duration_ms=1400):
+        self.toast_label.setText(message)
+        self.position_toast()
+        self.toast_label.show()
+        QTimer.singleShot(duration_ms, self.toast_label.hide)
 
     def exit_app(self):
         self.close()
@@ -790,6 +1073,12 @@ class SettingsPage(QWidget):
         super().__init__(main)
         STATE.changed.connect(self.on_state_changed)
         self.main = main
+        self.current_category = None
+        self.nav_categories = []
+        self.option_cards = {}
+        self.card_categories = {}
+        self.shortcut_inputs = {}
+        self.shortcut_errors = {}
         self.setStyleSheet(
             """
             SettingsPage {
@@ -910,27 +1199,24 @@ class SettingsPage(QWidget):
         title.setObjectName("pageTitle")
 
         # Back Button in Sidebar
-        back_btn = QPushButton("← Back")
+        back_btn = QPushButton(" Back")
         back_btn.setObjectName("backBtn")
         back_btn.setFixedSize(70, 26)  # Make it small and fixed
         back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self.main.show_home)
 
-        nav = QListWidget()
-        nav.setObjectName("navList")
-        nav_items = [
-            ("General", "sliders"),
-            ("Video", "camera"),
-            ("Accessibility", "user"),
-            ("Advanced", "cpu"),
-        ]
-        for name, icon in nav_items:
-            nav.addItem(name)
-        nav.setCurrentRow(0)
+        self.nav = QListWidget()
+        self.nav.setObjectName("navList")
+        self.nav.setAccessibleName("Settings categories")
+        self.nav.setAccessibleDescription(
+            "Use arrow keys to choose a settings category."
+        )
+        self.nav.currentTextChanged.connect(self.on_category_changed)
+        self.build_nav_categories()
 
         sidebar_layout.addWidget(back_btn, 0, Qt.AlignLeft)
         sidebar_layout.addWidget(title)
-        sidebar_layout.addWidget(nav)
+        sidebar_layout.addWidget(self.nav)
         sidebar_layout.addStretch()
         sidebar.setLayout(sidebar_layout)
         sidebar.setFixedWidth(280)
@@ -945,10 +1231,11 @@ class SettingsPage(QWidget):
         header_row = QHBoxLayout()
         header_row.setSpacing(16)
 
-        section_title = QLabel("General")
-        section_title.setObjectName("sectionTitle")
+        self.section_title = QLabel("")
+        self.section_title.setObjectName("sectionTitle")
+        self.section_title.setAccessibleName("Selected category")
 
-        header_row.addWidget(section_title)
+        header_row.addWidget(self.section_title)
         header_row.addStretch()
 
         # Preview Section
@@ -962,6 +1249,10 @@ class SettingsPage(QWidget):
 
         self.preview = QLabel("Waiting for camera...")
         self.preview.setObjectName("preview")
+        self.preview.setAccessibleName("Camera preview")
+        self.preview.setAccessibleDescription(
+            "Live camera preview area. It updates when preview is enabled."
+        )
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumSize(480, 270)
         self.preview.setSizePolicy(
@@ -980,14 +1271,34 @@ class SettingsPage(QWidget):
         for action, cfg in self.iter_setting_features():
             card, checkbox = self.option(cfg)
             self.toggles[action] = checkbox
+            card_key = f"state:{action}"
+            self.option_cards[card_key] = card
+            self.card_categories[card_key] = cfg.get("category", "General")
+            content_layout.addWidget(card)
+
+        for action, cfg in self.iter_shortcut_features():
+            card, input_box, error_label = self.shortcut_option(action, cfg)
+            self.shortcut_inputs[action] = input_box
+            self.shortcut_errors[action] = error_label
+            card_key = f"shortcut:{action}"
+            self.option_cards[card_key] = card
+            self.card_categories[card_key] = "Shortcuts"
             content_layout.addWidget(card)
 
         content_layout.addStretch()
         content_panel.setLayout(content_layout)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setWidget(content_panel)
 
         root.addWidget(sidebar)
-        root.addWidget(content_panel, 1)
+        root.addWidget(scroll, 1)
         self.setLayout(root)
+        self.set_initial_category()
+        self.sync_from_state()
 
     def toggle_style(self):
         return """
@@ -1017,12 +1328,83 @@ class SettingsPage(QWidget):
             if cfg["type"] == "state":
                 yield action, cfg
 
+    def build_nav_categories(self):
+        seen = set()
+        self.nav_categories = []
+        self.nav.clear()
+        for _, cfg in self.iter_setting_features():
+            category = cfg.get("category", "General")
+            if category in seen:
+                continue
+            seen.add(category)
+            self.nav_categories.append(category)
+            self.nav.addItem(category)
+        if any(True for _ in self.iter_shortcut_features()):
+            self.nav_categories.append("Shortcuts")
+            self.nav.addItem("Shortcuts")
+
+    def set_initial_category(self):
+        if not self.nav_categories:
+            self.current_category = None
+            self.section_title.setText("Settings")
+            return
+        self.current_category = self.nav_categories[0]
+        self.nav.setCurrentRow(0)
+        self.update_category_view()
+
+    def on_category_changed(self, category):
+        self.current_category = category or None
+        self.update_category_view()
+
+    def update_category_view(self):
+        if self.current_category:
+            self.section_title.setText(self.current_category)
+        else:
+            self.section_title.setText("Settings")
+
+        for card_key, card in self.option_cards.items():
+            card_category = self.card_categories.get(card_key, "General")
+            card.setVisible(card_category == self.current_category)
+
     def sync_from_state(self):
         for action, checkbox in self.toggles.items():
             state_attr = STATE.FEATURES[action]["state"]
             checkbox.blockSignals(True)
             checkbox.setChecked(getattr(STATE, state_attr))
             checkbox.blockSignals(False)
+        for action, button in self.shortcut_inputs.items():
+            shortcut_text = STATE.normalize_shortcut(STATE.FEATURES[action]["shortcut"])
+            button.setText(shortcut_text)
+        self.update_shortcut_accessibility()
+
+    def iter_shortcut_features(self):
+        for action, cfg in STATE.FEATURES.items():
+            if cfg.get("configurable") and "shortcut" in cfg:
+                yield action, cfg
+
+    def update_shortcut_accessibility(self):
+        for action, input_box in self.shortcut_inputs.items():
+            shortcut_value = STATE.normalize_shortcut(
+                STATE.FEATURES[action].get("shortcut", "")
+            )
+            label = STATE.FEATURES[action].get("label", action)
+            input_box.setAccessibleName(f"{label} shortcut button")
+            input_box.setAccessibleDescription(
+                f"Shortcut: {shortcut_value}. Activate to change this shortcut."
+            )
+
+        input_box = self.shortcut_inputs.get("hide_close")
+        error_label = self.shortcut_errors.get("hide_close")
+        if not input_box or not error_label:
+            return
+        enabled = bool(STATE.ENABLE_HIDE_CLOSE_SHORTCUT)
+        input_box.setEnabled(enabled)
+        if enabled:
+            if error_label.text().startswith("Disabled until enabled"):
+                error_label.setVisible(False)
+        else:
+            error_label.setText("Disabled until enabled in General settings.")
+            error_label.setVisible(True)
 
     def on_frame(self, frame):
         if not STATE.SHOW_PREVIEW:
@@ -1040,6 +1422,8 @@ class SettingsPage(QWidget):
 
     def option(self, cfg):
         descriptions = {
+            "Start Camera on Launch": "Automatically starts Sevue camera when the app opens.",
+            "Enable Hide/Close Shortcut": "Enable a global hotkey for hide/show window control.",
             "Flip Camera": "Mirror the video feed horizontally for a natural reflection.",
             "Flip Subtitles": "Reverse text direction when looking into a mirror.",
             "Flip Hands": "Adjust hand tracking coordinates for mirrored display.",
@@ -1072,6 +1456,8 @@ class SettingsPage(QWidget):
         label.setBuddy(toggle)
         state_attr = cfg["state"]
         toggle.setChecked(getattr(STATE, state_attr))
+        toggle.setAccessibleName(cfg["label"])
+        toggle.setAccessibleDescription(subtitle.text() or cfg["label"])
 
         toggle.stateChanged.connect(
             lambda v, attr=state_attr: STATE.set_flag(attr, bool(v))
@@ -1081,6 +1467,161 @@ class SettingsPage(QWidget):
         row.addWidget(toggle)
 
         return card, toggle
+
+    def shortcut_option(self, action, cfg):
+        descriptions = {
+            "Start/Stop Camera": "Toggle camera capture from anywhere using a global hotkey.",
+            "Hide/Close Window": "Optional global hide/show shortcut. Disabled until enabled in General settings.",
+            "Flip Camera": "Toggle camera mirroring.",
+            "Flip Subtitles": "Toggle subtitle mirroring.",
+            "Flip Hands": "Toggle hand landmark mirroring.",
+            "hand Debug": "Toggle hand debug overlay.",
+        }
+        card = self.card_container()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(20, 16, 20, 16)
+        row.setSpacing(16)
+
+        label_wrap = QVBoxLayout()
+        label_wrap.setSpacing(4)
+
+        label = QLabel(f'{cfg.get("label", action)} Shortcut')
+        label.setObjectName("cardTitle")
+
+        subtitle = QLabel(
+            f'{descriptions.get(cfg.get("label", action), "")} Use modifier + key only.'
+        )
+        subtitle.setObjectName("cardSubtitle")
+        subtitle.setWordWrap(True)
+
+        error = QLabel("")
+        error.setObjectName("cardSubtitle")
+        error.setStyleSheet("color: #ff6b6b;")
+        error.setVisible(False)
+
+        label_wrap.addWidget(label)
+        label_wrap.addWidget(subtitle)
+        label_wrap.addWidget(error)
+
+        input_box = QPushButton(STATE.normalize_shortcut(cfg["shortcut"]))
+        input_box.setObjectName("settingsBtn")
+        input_box.setFixedWidth(190)
+        input_box.setCursor(Qt.PointingHandCursor)
+        input_box.setFocusPolicy(Qt.StrongFocus)
+        label.setBuddy(input_box)
+        input_box.clicked.connect(
+            lambda _, a=action: self.on_shortcut_button_clicked(a)
+        )
+
+        row.addLayout(label_wrap)
+        row.addWidget(input_box)
+        return card, input_box, error
+
+    def on_shortcut_button_clicked(self, action):
+        input_box = self.shortcut_inputs[action]
+        error_label = self.shortcut_errors[action]
+        error_label.setAccessibleName(
+            f'{STATE.FEATURES[action].get("label", action)} shortcut error'
+        )
+        dialog = QDialog(self)
+        dialog.setWindowTitle(
+            f'Set {STATE.FEATURES[action].get("label", action)} Shortcut'
+        )
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+
+        prompt = QLabel("Press a modifier + key, then click OK.")
+        prompt.setWordWrap(True)
+        editor = QKeySequenceEdit()
+        editor.setMaximumSequenceLength(1)
+        editor.setKeySequence(QKeySequence(STATE.FEATURES[action]["shortcut"]))
+        editor.setFocusPolicy(Qt.StrongFocus)
+        editor.setAccessibleName(
+            f'{STATE.FEATURES[action].get("label", action)} shortcut editor'
+        )
+        editor.setAccessibleDescription(
+            "Press a modifier and one key to set the new shortcut."
+        )
+        captured_label = QLabel("")
+        captured_label.setObjectName("cardSubtitle")
+        captured_label.setWordWrap(True)
+        captured_label.setAccessibleName("Captured shortcut")
+        captured_label.setAccessibleDescription(
+            "Announces the currently captured shortcut."
+        )
+        captured_label.setText(
+            f"Captured shortcut: {STATE.normalize_shortcut(STATE.FEATURES[action]['shortcut'])}"
+        )
+
+        def on_capture_changed(seq):
+            captured = seq.toString(QKeySequence.PortableText).strip()
+            if not captured:
+                captured = "None"
+            captured_label.setText(f"Captured shortcut: {captured}")
+            editor.setAccessibleDescription(
+                f"Press a modifier and one key to set the new shortcut. Captured: {captured}."
+            )
+
+        editor.keySequenceChanged.connect(on_capture_changed)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        ok_btn = buttons.button(QDialogButtonBox.Ok)
+        if ok_btn:
+            ok_btn.setDefault(True)
+            ok_btn.setAutoDefault(True)
+
+        accept_shortcut_return = QShortcut(QKeySequence("Return"), dialog)
+        accept_shortcut_enter = QShortcut(QKeySequence("Enter"), dialog)
+        cancel_shortcut = QShortcut(QKeySequence("Esc"), dialog)
+        accept_shortcut_return.activated.connect(dialog.accept)
+        accept_shortcut_enter.activated.connect(dialog.accept)
+        cancel_shortcut.activated.connect(dialog.reject)
+
+        layout.addWidget(prompt)
+        layout.addWidget(editor)
+        layout.addWidget(captured_label)
+        layout.addWidget(buttons)
+        editor.setFocus()
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        new_value = editor.keySequence().toString(QKeySequence.PortableText).strip()
+        if not new_value:
+            return
+
+        if not STATE.is_valid_shortcut(new_value):
+            error_label.setText(
+                "Shortcut must be modifier + key (example: Ctrl+Shift+S)."
+            )
+            error_label.setVisible(True)
+            input_box.setText(
+                STATE.normalize_shortcut(STATE.FEATURES[action]["shortcut"])
+            )
+            return
+
+        normalized = STATE.normalize_shortcut(new_value)
+        for other_action, other_cfg in self.iter_shortcut_features():
+            if other_action == action:
+                continue
+            if STATE.normalize_shortcut(other_cfg["shortcut"]) == normalized:
+                error_label.setText(
+                    "This shortcut is already in use by another action."
+                )
+                error_label.setVisible(True)
+                input_box.setText(
+                    STATE.normalize_shortcut(STATE.FEATURES[action]["shortcut"])
+                )
+                return
+
+        error_label.setVisible(False)
+        if not STATE.set_shortcut(action, normalized):
+            error_label.setText("Invalid shortcut.")
+            error_label.setVisible(True)
+            return
+        input_box.setText(normalized)
 
     def card_container(self):
         card = QFrame()
