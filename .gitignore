@@ -4,4 +4,5 @@ hands/
 .*/
 __pycache__/
 release/
-config.cfg
+data/config.json
+train_installer_gen/data/
