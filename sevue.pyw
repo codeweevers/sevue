@@ -1199,7 +1199,7 @@ class SettingsPage(QWidget):
         title.setObjectName("pageTitle")
 
         # Back Button in Sidebar
-        back_btn = QPushButton(" Back")
+        back_btn = QPushButton("← Back")
         back_btn.setObjectName("backBtn")
         back_btn.setFixedSize(70, 26)  # Make it small and fixed
         back_btn.setCursor(Qt.PointingHandCursor)
