@@ -109,7 +109,7 @@ COMMON_RESOLUTIONS = [
 ]
 DEFAULT_FPS = 30
 AI_FRAME_SIZE = (640, 480)
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.cfg")
+
 
 
 class State(QObject):
@@ -197,6 +197,7 @@ class State(QObject):
                 "shortcut": "Esc",
             },
         }
+        self.config_path = os.path.join(self.BASE_DIR, "config.json")
         self.config = self.default_config()
         self.load_config()
 
@@ -284,16 +285,16 @@ class State(QObject):
 
     def save_config(self):
         self.refresh_config_from_state()
-        with open(config_path, "w", encoding="utf-8") as f:
+        with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=4)
 
     def load_config(self):
-        if not os.path.exists(config_path):
+        if not os.path.exists(self.config_path):
             self.save_config()
             return
 
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(self.config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
             if not isinstance(loaded, dict):
                 raise ValueError("invalid config root")
@@ -371,7 +372,7 @@ class AIThread(WorkerThread):
             GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
             VisionRunningMode = mp.tasks.vision.RunningMode
             model_path = os.path.join(
-                STATE.BASE_DIR, "model", "gesture_recognizer.task"
+                STATE.BASE_DIR, "data", "model.task"
             )
             with open(model_path, "rb") as f:
                 data = f.read()
