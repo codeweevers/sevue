@@ -130,7 +130,6 @@ class State(QObject):
         self.SHOW_HAND_DEBUG = False
         self.SHOW_PREVIEW = True
         self.AUTO_START_CAMERA = False
-        self.ENABLE_HIDE_CLOSE_SHORTCUT = False
         self.BASE_DIR = self.resource_path("")
         self._lock = threading.Lock()
         self._hand_landmarks = None
@@ -147,13 +146,6 @@ class State(QObject):
                 "category": "General",
                 "configurable": True,
             },
-            "enable_hide_close_shortcut": {
-                "type": "state",
-                "state": "ENABLE_HIDE_CLOSE_SHORTCUT",
-                "label": "Enable Hide/Close Shortcut",
-                "category": "General",
-                "configurable": True,
-            },
             "toggle_camera": {
                 "type": "action",
                 "label": "Start/Stop Camera",
@@ -163,9 +155,8 @@ class State(QObject):
             },
             "hide_close": {
                 "type": "action",
-                "label": "Hide/Close Window",
+                "label": "Hide/Show Window",
                 "shortcut": "Ctrl+Shift+M",
-                "category": "General",
                 "configurable": True,
             },
             "flip_camera": {
@@ -899,8 +890,6 @@ class MainWindow(QMainWindow):
         for action, cfg in STATE.FEATURES.items():
             if action == "hide":
                 continue
-            if action == "hide_close" and not STATE.ENABLE_HIDE_CLOSE_SHORTCUT:
-                continue
             shortcut = cfg.get("shortcut")
             if not isinstance(shortcut, str):
                 continue
@@ -1208,9 +1197,6 @@ class SettingsPage(QWidget):
         self.nav = QListWidget()
         self.nav.setObjectName("navList")
         self.nav.setAccessibleName("Settings categories")
-        self.nav.setAccessibleDescription(
-            "Use arrow keys to choose a settings category."
-        )
         self.nav.currentTextChanged.connect(self.on_category_changed)
         self.build_nav_categories()
 
@@ -1250,9 +1236,6 @@ class SettingsPage(QWidget):
         self.preview = QLabel("Waiting for camera...")
         self.preview.setObjectName("preview")
         self.preview.setAccessibleName("Camera preview")
-        self.preview.setAccessibleDescription(
-            "Live camera preview area. It updates when preview is enabled."
-        )
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumSize(480, 270)
         self.preview.setSizePolicy(
@@ -1290,6 +1273,7 @@ class SettingsPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setFocusPolicy(Qt.NoFocus)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setWidget(content_panel)
@@ -1388,23 +1372,10 @@ class SettingsPage(QWidget):
                 STATE.FEATURES[action].get("shortcut", "")
             )
             label = STATE.FEATURES[action].get("label", action)
-            input_box.setAccessibleName(f"{label} shortcut button")
-            input_box.setAccessibleDescription(
-                f"Shortcut: {shortcut_value}. Activate to change this shortcut."
+            input_box.setAccessibleName(
+                f"{label}, {shortcut_value}. Activate to change this shortcut."
             )
-
         input_box = self.shortcut_inputs.get("hide_close")
-        error_label = self.shortcut_errors.get("hide_close")
-        if not input_box or not error_label:
-            return
-        enabled = bool(STATE.ENABLE_HIDE_CLOSE_SHORTCUT)
-        input_box.setEnabled(enabled)
-        if enabled:
-            if error_label.text().startswith("Disabled until enabled"):
-                error_label.setVisible(False)
-        else:
-            error_label.setText("Disabled until enabled in General settings.")
-            error_label.setVisible(True)
 
     def on_frame(self, frame):
         if not STATE.SHOW_PREVIEW:
@@ -1471,7 +1442,6 @@ class SettingsPage(QWidget):
     def shortcut_option(self, action, cfg):
         descriptions = {
             "Start/Stop Camera": "Toggle camera capture from anywhere using a global hotkey.",
-            "Hide/Close Window": "Optional global hide/show shortcut. Disabled until enabled in General settings.",
             "Flip Camera": "Toggle camera mirroring.",
             "Flip Subtitles": "Toggle subtitle mirroring.",
             "Flip Hands": "Toggle hand landmark mirroring.",
