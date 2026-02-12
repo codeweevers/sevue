@@ -7,8 +7,6 @@ import time
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QKeySequence
 
-from constants import APP_ROOT, CONFIG_PATH
-
 
 class StateModel(QObject):
     changed = Signal(str)
@@ -93,13 +91,14 @@ class StateModel(QObject):
                 "shortcut": "Esc",
             },
         }
+        self.config_path = os.path.join(self.BASE_DIR, "config.json")
         self.config = self.default_config()
         self.load_config()
 
     def resource_path(self, relative):
         if hasattr(sys, "_MEIPASS"):
             return os.path.join(sys._MEIPASS, relative)
-        return os.path.join(APP_ROOT, relative)
+        return os.path.join(os.path.abspath("."), relative)
 
     def set_subtitle(self, text, duration=2.5):
         with self._lock:
@@ -197,16 +196,16 @@ class StateModel(QObject):
 
     def save_config(self):
         self.refresh_config_from_state()
-        with open(CONFIG_PATH, "w", encoding="utf-8") as file_obj:
+        with open(self.config_path, "w", encoding="utf-8") as file_obj:
             json.dump(self.config, file_obj, indent=4)
 
     def load_config(self):
-        if not os.path.exists(CONFIG_PATH):
+        if not os.path.exists(self.config_path):
             self.save_config()
             return
 
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as file_obj:
+            with open(self.config_path, "r", encoding="utf-8") as file_obj:
                 loaded = json.load(file_obj)
             if not isinstance(loaded, dict):
                 raise ValueError("invalid config root")
