@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-import os
-parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+import pathlib
+parent_dir = pathlib.Path(__file__).resolve().parent
 
 a = Analysis(
     ['../sevue.pyw'],
