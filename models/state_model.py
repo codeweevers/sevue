@@ -1,5 +1,6 @@
 ﻿import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -91,7 +92,8 @@ class StateModel(QObject):
                 "shortcut": "Esc",
             },
         }
-        self.config_path = os.path.join(self.BASE_DIR, "data", "config.json")
+        self.config_path = self.resolve_config_path()
+        self.model_path = self.resolve_model_path()
         self.config = self.default_config()
         self.load_config()
 
@@ -100,6 +102,31 @@ class StateModel(QObject):
             return os.path.join(sys._MEIPASS, relative)
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         return os.path.join(root_dir, relative)
+
+    def is_installed_build(self):
+        return bool(getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"))
+
+    def resolve_config_dir(self):
+        if self.is_installed_build():
+            return os.path.join(os.path.expanduser("~"), "Sevue", "data")
+        return os.path.join(self.BASE_DIR, "data")
+
+    def resolve_config_path(self):
+        return os.path.join(self.resolve_config_dir(), "config.json")
+
+    def resolve_model_path(self):
+        config_dir = self.resolve_config_dir()
+        model_path = os.path.join(config_dir, "model.task")
+        if os.path.exists(model_path):
+            return model_path
+        os.makedirs(config_dir, exist_ok=True)
+        bundled_model = os.path.join(self.BASE_DIR, "data", "model.task")
+        if os.path.exists(bundled_model):
+            try:
+                shutil.copy2(bundled_model, model_path)
+            except Exception:
+                return bundled_model
+        return model_path
 
     def set_subtitle(self, text, duration=2.5):
         with self._lock:

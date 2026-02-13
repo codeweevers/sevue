@@ -64,23 +64,37 @@ class HomePageView(QWidget):
         layout.setSpacing(40)
         layout.setContentsMargins(40, 60, 40, 60)
 
+        logo_container = QWidget()
+        logo_layout = QVBoxLayout(logo_container)
+        logo_layout.setAlignment(Qt.AlignCenter)
+        logo_layout.setSpacing(0)
+
         logo = QLabel()
         logo.setObjectName("logo")
         logo.setAlignment(Qt.AlignCenter)
+
         logo_path = os.path.join(self.base_dir, "icons", "logo.png")
         if os.path.exists(logo_path):
             pixmap = QPixmap(logo_path)
             logo.setPixmap(
                 pixmap.scaled(240, 240, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             )
-        else:
-            logo.setText("SEVUE")
-            logo.setStyleSheet(
-                "font-size: 64px; font-weight: 800; color: white; letter-spacing: 4px;"
-            )
 
+        title = QLabel("Sevue")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet(
+            """
+            font-family:  roboto, "Segoe UI", sans-serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: white;
+            letter-spacing: 1px;
+        """
+        )
         logo.setAccessibleName("SEVUE logo")
 
+        logo_layout.addWidget(logo)
+        logo_layout.addWidget(title)
         btn_layout = QVBoxLayout()
         btn_layout.setSpacing(16)
         btn_layout.setAlignment(Qt.AlignCenter)
@@ -103,7 +117,7 @@ class HomePageView(QWidget):
         btn_layout.addWidget(self.settings_btn)
 
         layout.addStretch()
-        layout.addWidget(logo)
+        layout.addWidget(logo_container)
         layout.addSpacing(20)
         layout.addLayout(btn_layout)
         layout.addStretch()

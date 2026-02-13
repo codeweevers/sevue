@@ -1,4 +1,3 @@
-import os
 import threading
 import time
 from copy import deepcopy
@@ -49,7 +48,7 @@ class AIThread(WorkerThread):
             gesture_recognizer = mp.tasks.vision.GestureRecognizer
             gesture_options = mp.tasks.vision.GestureRecognizerOptions
             vision_running_mode = mp.tasks.vision.RunningMode
-            model_path = os.path.join(self.state.BASE_DIR, "data", "model.task")
+            model_path = self.state.model_path
             with open(model_path, "rb") as file_obj:
                 data = file_obj.read()
             options = gesture_options(
