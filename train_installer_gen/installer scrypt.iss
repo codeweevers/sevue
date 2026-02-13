@@ -65,7 +65,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\Install_SevueCam.bat"; StatusMsg: "Installing virtual camera driver..."; Flags: runascurrentuser;
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent unchecked
 [UninstallRun] 
 Filename: "{app}\Uninstall_SevueCam.bat"; StatusMsg: "Uninstalling virtual camera driver..."; Flags: runascurrentuser
 
