@@ -35,12 +35,12 @@ ArchitecturesAllowed=x64compatible
 ; meaning it should use the native 64-bit Program Files directory and
 ; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
-LicenseFile=C:\Users\tech\Documents\GitHub\sevue\LICENSE
+LicenseFile=..\LICENSE
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 OutputDir=release
 OutputBaseFilename=sevue_setup
-SetupIconFile=..\icons
+SetupIconFile=..\icons\favicon.ico
 WizardStyle=modern
 
 [Languages]

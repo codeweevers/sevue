@@ -1,6 +1,7 @@
-﻿import os
+import os
 import threading
 import time
+from copy import deepcopy
 
 import cv2
 import mediapipe as mp
@@ -322,12 +323,14 @@ class CameraThread(WorkerThread):
                         )
 
                     for landmarks in hand_landmarks:
+                        draw_landmarks = landmarks
                         if self.state.FLIP_HANDS:
-                            for lm in landmarks:
+                            draw_landmarks = deepcopy(landmarks)
+                            for lm in draw_landmarks:
                                 lm.x = 1.0 - lm.x
                         mp_drawing.draw_landmarks(
                             frame,
-                            landmarks,
+                            draw_landmarks,
                             mp_hands.HAND_CONNECTIONS,
                             mp_drawing_styles.get_default_hand_landmarks_style(),
                             mp_drawing_styles.get_default_hand_connections_style(),

@@ -131,7 +131,11 @@ class MainWindowController(QMainWindow):
         self.home_page.set_camera_running()
 
     def toggle_camera(self):
-        if not self.camera_running:
+        cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
+        ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
+        workers_active = cam_active or ai_active
+
+        if not workers_active and not self.camera_running:
             self.home_page.set_camera_starting()
             self.stop_event = threading.Event()
             self.cam_ready = False
@@ -151,7 +155,8 @@ class MainWindowController(QMainWindow):
             return
 
         self.home_page.set_camera_stopping()
-        self.stop_event.set()
+        if self.stop_event:
+            self.stop_event.set()
         if self.cam_thread:
             self.cam_thread.requestInterruption()
         if self.ai_thread:

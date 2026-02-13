@@ -98,7 +98,8 @@ class StateModel(QObject):
     def resource_path(self, relative):
         if hasattr(sys, "_MEIPASS"):
             return os.path.join(sys._MEIPASS, relative)
-        return os.path.join(os.path.abspath("."), relative)
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(root_dir, relative)
 
     def set_subtitle(self, text, duration=2.5):
         with self._lock:
@@ -196,6 +197,7 @@ class StateModel(QObject):
 
     def save_config(self):
         self.refresh_config_from_state()
+        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, "w", encoding="utf-8") as file_obj:
             json.dump(self.config, file_obj, indent=4)
 
