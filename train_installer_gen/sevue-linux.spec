@@ -1,12 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
 
 a = Analysis(
     ['../sevue.pyw'],
-    pathex=[],
+    pathex=[parent_dir],
     binaries=[('../libmediapipe.so', 'mediapipe/tasks/c')],
     datas=[('../data', 'data'), ('../icons', 'icons')],
-    hiddenimports=['mediapipe', 'pyvirtualcam', 'cv2', 'mediapipe.tasks.c'],
+    hiddenimports=['mediapipe', 'pyvirtualcam', 'cv2', 'mediapipe.tasks.c', 'controllers', 'models', 'views', 'workers'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
