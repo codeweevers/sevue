@@ -1,11 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 import pathlib
-parent_dir = pathlib.Path(__file__).resolve().parent
+import sys
+parent_dir = pathlib.Path(__name__).resolve().parent
+EXT = {
+    "win32": "dll",
+    "linux": "so",
+    "darwin": "dylib",  # optional
+}[sys.platform]
+lib_file = parent_dir / f"libmediapipe.{EXT}"
 a = Analysis(
-    ['..\\sevue.pyw'],
-    pathex=[parent_dir],
-    binaries=[('libmediapipe.dll', 'mediapipe\\tasks\\c')],
-    datas=[('..\\data', 'data'), ('..\\icons', 'icons')],
+    [parent_dir.parent / "sevue.pyw"],
+    pathex=[parent_dir.parent],
+    binaries=[(str(lib_file), "mediapipe/tasks/c")],
+    datas=[('../data', 'data'), ('../icons', 'icons')],
     hiddenimports=['mediapipe', 'pyvirtualcam', 'cv2', 'mediapipe.tasks.c', 'controllers', 'models', 'views', 'workers'],
     hookspath=[],
     hooksconfig={},
