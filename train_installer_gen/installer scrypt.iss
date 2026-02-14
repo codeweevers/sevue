@@ -12,7 +12,6 @@ AppVerName={#MyAppName}
 DisableWelcomePage=no
 DisableDirPage=yes
 DisableReadyMemo=yes
-DefaultGroupName={#MyAppName}
 CloseApplications=yes
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
@@ -45,8 +44,8 @@ Source: "UnityCaptureFilter64.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Flags: runmaximized
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; Flags: runmaximized excludefromshowinnewinstall
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Flags: runmaximized
+Name: "{autoprograms}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"; Flags: runmaximized excludefromshowinnewinstall
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Flags: runmaximized
 
 [Run]
@@ -54,7 +53,3 @@ Filename: "{app}\Install_SevueCam.bat"; StatusMsg: "Installing virtual camera dr
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent unchecked
 [UninstallRun] 
 Filename: "{app}\Uninstall_SevueCam.bat"; StatusMsg: "Uninstalling virtual camera driver..."; Flags: runascurrentuser
-
-[Registry]
-Root: HKLM; Subkey: "Software\{#MyAppPublisher}"; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; Flags: uninsdeletekey
