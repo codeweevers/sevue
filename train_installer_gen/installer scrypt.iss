@@ -36,8 +36,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "dist\Sevue\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\Sevue\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\sevue\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\sevue\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "Install_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "Uninstall_SevueCam.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "UnityCaptureFilter32.dll"; DestDir: "{app}"; Flags: ignoreversion
