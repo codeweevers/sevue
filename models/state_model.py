@@ -109,7 +109,7 @@ class StateModel(QObject):
         return bool(getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"))
 
     def resolve_config_dir(self):
-        dirs = PlatformDirs("CodeWeevers", "Sevue")
+        dirs = PlatformDirs(appname="Sevue",roaming=True,ensure_exists=True)
         if self.is_installed_build():
             return Path(dirs.user_config_dir)
         return Path(self.BASE_DIR) / "data"
@@ -122,7 +122,6 @@ class StateModel(QObject):
         model_path = Path(config_dir, "model.task")
         if Path.exists(model_path):
             return model_path
-        Path.mkdir(config_dir, exist_ok=True)
         bundled_model = Path(self.BASE_DIR, "data", "model.task")
         if Path.exists(bundled_model):
             try:
@@ -227,7 +226,6 @@ class StateModel(QObject):
 
     def save_config(self):
         self.refresh_config_from_state()
-        os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
         with open(self.config_path, "w", encoding="utf-8") as file_obj:
             json.dump(self.config, file_obj, indent=4)
 
