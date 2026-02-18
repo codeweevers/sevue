@@ -46,7 +46,9 @@ class MainWindowController(QMainWindow):
 
         MainWindowController._instance = self
         self.setWindowTitle("Sevue")
-
+        self.setWindowIcon(
+            QIcon(os.path.join(self.state.BASE_DIR, "icons", "favicon.ico"))
+        )
         self.home_page = HomePageView(self.state.BASE_DIR, self)
         self.settings_page = SettingsPageView(self.state, self)
 
@@ -83,7 +85,9 @@ class MainWindowController(QMainWindow):
         self._wire_events()
 
         self.hide_shortcut = QShortcut(QKeySequence("Esc"), self)
-        self.hide_shortcut.activated.connect(partial(self.dispatch_action, "hide", True))
+        self.hide_shortcut.activated.connect(
+            partial(self.dispatch_action, "hide", True)
+        )
         self.setup_shortcuts()
         self.update_tray_action()
 
@@ -98,7 +102,9 @@ class MainWindowController(QMainWindow):
         self.home_page.show_settings_requested.connect(self.show_settings)
 
         self.settings_page.show_home_requested.connect(self.show_home)
-        self.settings_page.state_toggle_requested.connect(self.on_state_toggle_requested)
+        self.settings_page.state_toggle_requested.connect(
+            self.on_state_toggle_requested
+        )
 
     def on_state_toggle_requested(self, state_attr, value):
         self.state.set_flag(state_attr, value)
@@ -141,7 +147,9 @@ class MainWindowController(QMainWindow):
             self.cam_ready = False
             self.ai_ready = False
 
-            self.cam_thread = CameraThread(self.stop_event, self.state, self.frame_buffer)
+            self.cam_thread = CameraThread(
+                self.stop_event, self.state, self.frame_buffer
+            )
             self.ai_thread = AIThread(self.stop_event, self.state, self.frame_buffer)
 
             self.cam_thread.cam_ready.connect(self.on_cam_ready)
