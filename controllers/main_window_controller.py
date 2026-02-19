@@ -239,10 +239,36 @@ class MainWindowController(QMainWindow):
             self.show_home()
 
     def open_model_selector(self):
-        selected_model = self.settings_page.prompt_model_choice()
-        if selected_model is None:
-            return
-        self.state.set_selected_model(str(selected_model))
+        while True:
+            result = self.settings_page.prompt_model_choice(
+                model_names=self.state.list_models(),
+                current_model_name=self.state.selected_model_name,
+            )
+            if result is None:
+                return
+
+            action = result.get("action")
+            if action == "select":
+                model_name = str(result.get("model_name", "")).strip()
+                if model_name:
+                    self.state.set_selected_model(model_name)
+                return
+
+            if action == "browse":
+                file_path = str(result.get("file_path", "")).strip()
+                if not file_path:
+                    continue
+                while True:
+                    model_name = self.settings_page.prompt_model_name()
+                    if model_name is None:
+                        break
+
+                    success, message = self.state.import_model(file_path, model_name)
+                    if success:
+                        self.state.set_selected_model(str(model_name).strip())
+                        return
+
+                    show_dialog("ok", message, "Invalid Model Name", self)
 
     def restart_camera_for_selection_change(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())

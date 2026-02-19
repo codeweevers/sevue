@@ -629,7 +629,7 @@ class SettingsPageView(QWidget):
             return None
         return combo.currentData()
 
-    def prompt_model_choice(self):
+    def prompt_model_choice(self, model_names, current_model_name):
         dialog = QDialog(self)
         dialog.setWindowTitle("Choose Model")
         dialog.setModal(True)
@@ -639,18 +639,12 @@ class SettingsPageView(QWidget):
         prompt.setWordWrap(True)
 
         combo = QComboBox()
-
-        def refresh_combo(selected_name=None):
-            combo.clear()
-            for model_name in self.state.list_models():
-                combo.addItem(model_name, model_name)
-            target = selected_name or self.state.selected_model_name
-            if target:
-                index = combo.findData(target)
-                if index >= 0:
-                    combo.setCurrentIndex(index)
-
-        refresh_combo()
+        for model_name in model_names:
+            combo.addItem(model_name, model_name)
+        if current_model_name:
+            index = combo.findData(current_model_name)
+            if index >= 0:
+                combo.setCurrentIndex(index)
 
         browse_btn = EnterPushButton("Browse")
         browse_btn.setObjectName("settingsBtn")
@@ -659,8 +653,10 @@ class SettingsPageView(QWidget):
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
+        selected_file = {"path": ""}
+        browse_result_code = int(QDialog.DialogCode.Accepted) + 1
 
-        def import_model_flow():
+        def on_browse():
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
                 "Import Model",
@@ -669,24 +665,10 @@ class SettingsPageView(QWidget):
             )
             if not file_path:
                 return
+            selected_file["path"] = file_path
+            dialog.done(browse_result_code)
 
-            while True:
-                name, ok = QInputDialog.getText(
-                    dialog,
-                    "Model Name",
-                    "Enter a name for this model:",
-                )
-                if not ok:
-                    return
-
-                success, message = self.state.import_model(file_path, name)
-                if success:
-                    refresh_combo(name.strip())
-                    return
-
-                show_dialog("ok", message, "Invalid Model Name", self)
-
-        browse_btn.clicked.connect(import_model_flow)
+        browse_btn.clicked.connect(on_browse)
 
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -697,9 +679,22 @@ class SettingsPageView(QWidget):
         layout.addLayout(row)
         layout.addWidget(buttons)
 
-        if dialog.exec() != QDialog.Accepted:
+        result = dialog.exec()
+        if result == browse_result_code:
+            return {"action": "browse", "file_path": selected_file["path"]}
+        if result != QDialog.Accepted:
             return None
-        return combo.currentData()
+        return {"action": "select", "model_name": combo.currentData()}
+
+    def prompt_model_name(self):
+        name, ok = QInputDialog.getText(
+            self,
+            "Model Name",
+            "Enter a name for this model:",
+        )
+        if not ok:
+            return None
+        return name
 
     def show_shortcut_error(self, action, message):
         label = self.shortcut_errors.get(action)
