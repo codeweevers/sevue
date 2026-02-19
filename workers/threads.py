@@ -255,7 +255,7 @@ class CameraThread(WorkerThread):
                 cap = cv2.VideoCapture(fallback_index)
                 if cap.isOpened():
                     camera_index = fallback_index
-                    self.state.set_camera_index(camera_index)
+                    self.state.set_camera_index(camera_index, notify=False)
                     break
         if not cap.isOpened():
             print("ERROR: Could not open camera")

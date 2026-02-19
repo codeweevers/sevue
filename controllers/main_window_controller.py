@@ -66,6 +66,7 @@ class MainWindowController(QMainWindow):
         self.cam_ready = False
         self.ai_ready = False
         self.available_cameras = []
+        self.restart_camera_on_stop = False
 
         self.toast_label = QLabel(self)
         self.toast_label.setObjectName("shortcutToast")
@@ -126,6 +127,10 @@ class MainWindowController(QMainWindow):
         self.ai_ready = False
         self.home_page.set_camera_idle()
         self.camera_running = False
+
+        if self.restart_camera_on_stop:
+            self.restart_camera_on_stop = False
+            QTimer.singleShot(0, self.toggle_camera)
 
     def on_cam_ready(self):
         self.cam_ready = True
@@ -221,6 +226,25 @@ class MainWindowController(QMainWindow):
             self.open_camera_selector(reason)
             if self.state.CAMERA_INDEX is None and cameras:
                 self.state.set_camera_index(cameras[0]["index"])
+            self.show_home()
+
+    def restart_camera_for_selection_change(self):
+        cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
+        ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
+        workers_active = cam_active or ai_active or self.camera_running
+        if not workers_active:
+            return
+        if self.restart_camera_on_stop:
+            return
+
+        self.restart_camera_on_stop = True
+        self.home_page.set_camera_stopping()
+        if self.stop_event:
+            self.stop_event.set()
+        if self.cam_thread:
+            self.cam_thread.requestInterruption()
+        if self.ai_thread:
+            self.ai_thread.requestInterruption()
 
     def toggle_window_visibility(self):
         if self.isVisible():
@@ -442,6 +466,8 @@ class MainWindowController(QMainWindow):
         self.settings_page.sync_from_state()
         if name.startswith("shortcut:"):
             self.setup_shortcuts()
+        if name == "camera:selected":
+            self.restart_camera_for_selection_change()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

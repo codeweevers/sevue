@@ -263,6 +263,13 @@ class StateModel(QObject):
             for action, values in loaded_features.items():
                 if action in self.config["features"] and isinstance(values, dict):
                     self.config["features"][action].update(values)
+        loaded_camera = loaded.get("camera", {})
+        if (
+            isinstance(loaded_camera, dict)
+            and "camera" in self.config
+            and isinstance(self.config["camera"], dict)
+        ):
+            self.config["camera"].update(loaded_camera)
         self.apply_config()
         self.save_config()
 
@@ -316,7 +323,7 @@ class StateModel(QObject):
             return False, "Invalid shortcut."
         return True, ""
 
-    def set_camera_index(self, index):
+    def set_camera_index(self, index, notify=True):
         if index is None:
             new_index = None
         elif isinstance(index, int) and index >= 0:
@@ -329,5 +336,6 @@ class StateModel(QObject):
 
         self.CAMERA_INDEX = new_index
         self.save_config()
-        self.changed.emit("camera:selected")
+        if notify:
+            self.changed.emit("camera:selected")
         return True
