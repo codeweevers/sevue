@@ -192,7 +192,9 @@ class MainWindowController(QMainWindow):
 
     def refresh_camera_devices(self):
         self.available_cameras = list_available_cameras()
-        self.settings_page.set_camera_devices(self.available_cameras)
+        self.settings_page.set_camera_devices(
+            self.available_cameras, selected_index=self.state.CAMERA_INDEX
+        )
         return self.available_cameras
 
     def open_camera_selector(self, reason_text=""):
@@ -207,7 +209,9 @@ class MainWindowController(QMainWindow):
         if chosen is None:
             return
         self.state.set_camera_index(int(chosen))
-        self.settings_page.set_camera_devices(cameras)
+        self.settings_page.set_camera_devices(
+            cameras, selected_index=self.state.CAMERA_INDEX
+        )
 
     def prepare_camera_selection(self):
         cameras = self.refresh_camera_devices()

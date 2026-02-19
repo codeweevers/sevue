@@ -36,7 +36,6 @@ class SettingsPageView(QWidget):
         self.toggles = {}
         self.shortcut_inputs = {}
         self.shortcut_errors = {}
-        self.camera_devices = []
         self.selected_camera_label = "Not selected"
         self.selected_model_label = "Not selected"
 
@@ -332,16 +331,13 @@ class SettingsPageView(QWidget):
             self.selected_model_label = selected
             self.model_label.setText(f"Selected: {selected}")
 
-    def set_camera_devices(self, devices):
-        self.camera_devices = list(devices or [])
-        selected_index = self.state.CAMERA_INDEX
-        selected = next(
-            (d for d in self.camera_devices if d["index"] == selected_index), None
-        )
+    def set_camera_devices(self, devices, selected_index=None):
+        camera_devices = list(devices or [])
+        selected = next((d for d in camera_devices if d["index"] == selected_index), None)
         if selected:
             self.selected_camera_label = selected["label"]
-        elif len(self.camera_devices) == 1:
-            self.selected_camera_label = self.camera_devices[0]["label"]
+        elif len(camera_devices) == 1:
+            self.selected_camera_label = camera_devices[0]["label"]
         else:
             self.selected_camera_label = "Not selected"
         self._sync_camera_summary()
