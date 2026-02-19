@@ -19,6 +19,7 @@ class StateModel(QObject):
         self.FLIP_VIDEO = True
         self.FLIP_TEXT = False
         self.FLIP_HANDS = False
+        self.CAMERA_INDEX = None
         self._word_buffer = []
         self._last_appended_word = None
         self._last_word = None
@@ -205,7 +206,12 @@ class StateModel(QObject):
             if "shortcut" in cfg:
                 item["shortcut"] = cfg["shortcut"]
             features[action] = item
-        return {"features": features}
+        return {
+            "features": features,
+            "camera": {
+                "index": self.CAMERA_INDEX,
+            },
+        }
 
     def apply_config(self):
         feature_data = self.config.get("features", {})
@@ -220,6 +226,14 @@ class StateModel(QObject):
                 shortcut = self.normalize_shortcut(shortcut)
                 if self.is_valid_shortcut(shortcut):
                     cfg["shortcut"] = shortcut
+
+        camera_data = self.config.get("camera", {})
+        if isinstance(camera_data, dict):
+            camera_index = camera_data.get("index")
+            if isinstance(camera_index, int) and camera_index >= 0:
+                self.CAMERA_INDEX = camera_index
+            else:
+                self.CAMERA_INDEX = None
 
     def refresh_config_from_state(self):
         self.config = self.default_config()
@@ -301,3 +315,19 @@ class StateModel(QObject):
         if not self.set_shortcut(action, normalized):
             return False, "Invalid shortcut."
         return True, ""
+
+    def set_camera_index(self, index):
+        if index is None:
+            new_index = None
+        elif isinstance(index, int) and index >= 0:
+            new_index = index
+        else:
+            return False
+
+        if self.CAMERA_INDEX == new_index:
+            return True
+
+        self.CAMERA_INDEX = new_index
+        self.save_config()
+        self.changed.emit("camera:selected")
+        return True

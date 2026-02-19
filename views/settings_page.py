@@ -1,6 +1,7 @@
 ﻿from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -20,6 +21,7 @@ from views.widgets import EnterPushButton, Toggle, show_dialog
 class SettingsPageView(QWidget):
     show_home_requested = Signal()
     state_toggle_requested = Signal(str, bool)
+    camera_select_requested = Signal()
 
     def __init__(self, state, parent=None):
         super().__init__(parent)
@@ -31,6 +33,8 @@ class SettingsPageView(QWidget):
         self.toggles = {}
         self.shortcut_inputs = {}
         self.shortcut_errors = {}
+        self.camera_devices = []
+        self.selected_camera_label = "Not selected"
 
         self.setStyleSheet(
             """
@@ -219,6 +223,14 @@ class SettingsPageView(QWidget):
         self.sync_from_state()
 
     def _build_settings_cards(self, content_layout):
+        camera_card, camera_button, camera_label = self.camera_option()
+        self.camera_select_button = camera_button
+        self.camera_label = camera_label
+        camera_card_key = "camera:select"
+        self.option_cards[camera_card_key] = camera_card
+        self.card_categories[camera_card_key] = "Video"
+        content_layout.addWidget(camera_card)
+
         for action, cfg in self.state.iter_setting_features():
             card, checkbox = self.option(cfg)
             self.toggles[action] = checkbox
@@ -285,6 +297,7 @@ class SettingsPageView(QWidget):
             button.setText(shortcut_text)
 
         self.update_shortcut_accessibility()
+        self._sync_camera_summary()
 
     def update_shortcut_accessibility(self):
         for action, input_box in self.shortcut_inputs.items():
@@ -295,6 +308,24 @@ class SettingsPageView(QWidget):
             input_box.setAccessibleName(
                 f"{label}, {shortcut_value}. Activate to change this shortcut."
             )
+
+    def _sync_camera_summary(self):
+        if hasattr(self, "camera_label"):
+            self.camera_label.setText(f"Selected: {self.selected_camera_label}")
+
+    def set_camera_devices(self, devices):
+        self.camera_devices = list(devices or [])
+        selected_index = self.state.CAMERA_INDEX
+        selected = next(
+            (d for d in self.camera_devices if d["index"] == selected_index), None
+        )
+        if selected:
+            self.selected_camera_label = selected["label"]
+        elif len(self.camera_devices) == 1:
+            self.selected_camera_label = self.camera_devices[0]["label"]
+        else:
+            self.selected_camera_label = "Not selected"
+        self._sync_camera_summary()
 
     def on_frame(self, frame):
         if not self.state.SHOW_PREVIEW:
@@ -354,6 +385,43 @@ class SettingsPageView(QWidget):
         row.addWidget(toggle)
 
         return card, toggle
+
+    def camera_option(self):
+        card = self.card_container()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(20, 16, 20, 16)
+        row.setSpacing(16)
+
+        label_wrap = QVBoxLayout()
+        label_wrap.setSpacing(4)
+
+        label = QLabel("Camera Device")
+        label.setObjectName("cardTitle")
+
+        subtitle = QLabel(
+            "Choose which physical camera Sevue should use for capture."
+        )
+        subtitle.setObjectName("cardSubtitle")
+        subtitle.setWordWrap(True)
+
+        current = QLabel("Selected: Not selected")
+        current.setObjectName("cardSubtitle")
+        current.setWordWrap(True)
+
+        label_wrap.addWidget(label)
+        label_wrap.addWidget(subtitle)
+        label_wrap.addWidget(current)
+
+        choose_btn = EnterPushButton("Choose Camera")
+        choose_btn.setObjectName("settingsBtn")
+        choose_btn.setFixedWidth(190)
+        choose_btn.setCursor(Qt.PointingHandCursor)
+        choose_btn.setFocusPolicy(Qt.StrongFocus)
+        choose_btn.clicked.connect(self.camera_select_requested.emit)
+
+        row.addLayout(label_wrap)
+        row.addWidget(choose_btn)
+        return card, choose_btn, current
 
     def shortcut_option(self, action, cfg):
         descriptions = {
@@ -464,6 +532,42 @@ class SettingsPageView(QWidget):
         else:
             self.show_shortcut_error(action, message)
             show_dialog("ok", message, "Invalid Shortcut", self)
+
+    def prompt_camera_choice(self, devices, current_index=None, reason_text=""):
+        if not devices:
+            show_dialog("ok", "No camera devices were detected.", "Camera Selection", self)
+            return None
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Camera")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+
+        prompt_text = reason_text or "Choose a camera device for Sevue."
+        prompt = QLabel(prompt_text)
+        prompt.setWordWrap(True)
+
+        combo = QComboBox()
+        for camera in devices:
+            combo.addItem(camera["label"], camera["index"])
+
+        if isinstance(current_index, int):
+            for idx, camera in enumerate(devices):
+                if camera["index"] == current_index:
+                    combo.setCurrentIndex(idx)
+                    break
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        layout.addWidget(prompt)
+        layout.addWidget(combo)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        return combo.currentData()
 
     def show_shortcut_error(self, action, message):
         label = self.shortcut_errors.get(action)

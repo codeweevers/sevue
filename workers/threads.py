@@ -15,6 +15,7 @@ from constants import (
     CONF_THRESHOLD,
     DEFAULT_FPS,
 )
+from workers.camera_utils import list_available_cameras
 from workers.device_utils import get_virtual_cam_device
 
 mp_hands = mp.tasks.vision.HandLandmarksConnections
@@ -241,7 +242,21 @@ class CameraThread(WorkerThread):
         return frame
 
     def run(self):
-        cap = cv2.VideoCapture(0)
+        camera_index = (
+            self.state.CAMERA_INDEX
+            if isinstance(self.state.CAMERA_INDEX, int)
+            else 0
+        )
+        cap = cv2.VideoCapture(camera_index)
+        if not cap.isOpened():
+            cap.release()
+            for camera in list_available_cameras():
+                fallback_index = camera["index"]
+                cap = cv2.VideoCapture(fallback_index)
+                if cap.isOpened():
+                    camera_index = fallback_index
+                    self.state.set_camera_index(camera_index)
+                    break
         if not cap.isOpened():
             print("ERROR: Could not open camera")
             return

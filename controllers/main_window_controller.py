@@ -18,6 +18,8 @@ from models.frame_buffer import FrameBuffer
 from models.state_model import StateModel
 from views.home_page import HomePageView
 from views.settings_page import SettingsPageView
+from views.widgets import show_dialog
+from workers.camera_utils import list_available_cameras
 from workers.threads import AIThread, CameraThread
 
 try:
@@ -63,6 +65,7 @@ class MainWindowController(QMainWindow):
         self.camera_running = False
         self.cam_ready = False
         self.ai_ready = False
+        self.available_cameras = []
 
         self.toast_label = QLabel(self)
         self.toast_label.setObjectName("shortcutToast")
@@ -90,6 +93,7 @@ class MainWindowController(QMainWindow):
         )
         self.setup_shortcuts()
         self.update_tray_action()
+        self.prepare_camera_selection()
 
         if self.state.AUTO_START_CAMERA:
             QTimer.singleShot(0, self.toggle_camera)
@@ -105,6 +109,7 @@ class MainWindowController(QMainWindow):
         self.settings_page.state_toggle_requested.connect(
             self.on_state_toggle_requested
         )
+        self.settings_page.camera_select_requested.connect(self.open_camera_selector)
 
     def on_state_toggle_requested(self, state_attr, value):
         self.state.set_flag(state_attr, value)
@@ -170,6 +175,53 @@ class MainWindowController(QMainWindow):
         if self.ai_thread:
             self.ai_thread.requestInterruption()
 
+    def refresh_camera_devices(self):
+        self.available_cameras = list_available_cameras()
+        self.settings_page.set_camera_devices(self.available_cameras)
+        return self.available_cameras
+
+    def open_camera_selector(self, reason_text=""):
+        cameras = self.refresh_camera_devices()
+        if not cameras:
+            show_dialog("ok", "No camera devices were detected.", "Camera Selection", self)
+            return
+
+        chosen = self.settings_page.prompt_camera_choice(
+            cameras, current_index=self.state.CAMERA_INDEX, reason_text=reason_text
+        )
+        if chosen is None:
+            return
+        self.state.set_camera_index(int(chosen))
+        self.settings_page.set_camera_devices(cameras)
+
+    def prepare_camera_selection(self):
+        cameras = self.refresh_camera_devices()
+        if not cameras:
+            self.state.set_camera_index(None)
+            return
+
+        camera_indices = {camera["index"] for camera in cameras}
+        saved_index = self.state.CAMERA_INDEX
+        has_saved = isinstance(saved_index, int)
+        saved_missing = has_saved and saved_index not in camera_indices
+
+        if len(cameras) == 1:
+            only_index = cameras[0]["index"]
+            if saved_index != only_index:
+                self.state.set_camera_index(only_index)
+            return
+
+        if not has_saved or saved_missing:
+            self.show_settings()
+            reason = (
+                "Your saved camera is no longer available. Choose another camera."
+                if saved_missing
+                else "Multiple cameras detected. Choose which camera to use."
+            )
+            self.open_camera_selector(reason)
+            if self.state.CAMERA_INDEX is None and cameras:
+                self.state.set_camera_index(cameras[0]["index"])
+
     def toggle_window_visibility(self):
         if self.isVisible():
             self.hide()
@@ -230,6 +282,7 @@ class MainWindowController(QMainWindow):
 
     def show_settings(self):
         self.setWindowTitle("Settings")
+        self.refresh_camera_devices()
         self.stack.setCurrentWidget(self.settings_page)
 
     def show_home(self):
