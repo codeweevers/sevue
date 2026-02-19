@@ -2,7 +2,6 @@
 import re
 import sys
 import threading
-from pathlib import Path
 from functools import partial
 
 from PySide6.QtCore import Qt, QTimer, Signal, QProcess
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from models.frame_buffer import FrameBuffer
 from models.state_model import StateModel
+from services.startup_service import StartupService
 from views.home_page import HomePageView
 from views.settings_page import SettingsPageView
 from views.widgets import show_dialog
@@ -42,6 +42,7 @@ class MainWindowController(QMainWindow):
         super().__init__()
         self.state = state or StateModel()
         self.frame_buffer = frame_buffer or FrameBuffer()
+        self.startup_service = StartupService("Sevue")
 
         self.stack = QStackedWidget(self)
         self.shortcuts = []
@@ -300,62 +301,12 @@ class MainWindowController(QMainWindow):
             self.showMinimized()
             self.update_tray_action()
 
-    def _startup_command(self):
-        if getattr(sys, "frozen", False):
-            return f'"{sys.executable}"'
-        script = str(Path(sys.argv[0]).resolve()) if sys.argv else ""
-        return f'"{sys.executable}" "{script}"'
-
-    def _set_boot_start_windows(self, enabled):
-        import winreg
-
-        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-        app_name = "Sevue"
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE
-        ) as reg_key:
-            if enabled:
-                winreg.SetValueEx(
-                    reg_key, app_name, 0, winreg.REG_SZ, self._startup_command()
-                )
-            else:
-                try:
-                    winreg.DeleteValue(reg_key, app_name)
-                except FileNotFoundError:
-                    pass
-
-    def _set_boot_start_linux(self, enabled):
-        autostart_dir = Path.home() / ".config" / "autostart"
-        desktop_file = autostart_dir / "sevue.desktop"
-        if enabled:
-            autostart_dir.mkdir(parents=True, exist_ok=True)
-            desktop_file.write_text(
-                "\n".join(
-                    [
-                        "[Desktop Entry]",
-                        "Type=Application",
-                        "Version=1.0",
-                        "Name=Sevue",
-                        "Comment=Start Sevue on login",
-                        f"Exec={self._startup_command()}",
-                        "X-GNOME-Autostart-enabled=true",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            return
-        if desktop_file.exists():
-            desktop_file.unlink()
-
     def sync_start_on_boot(self, show_errors=True):
-        if not self.state.is_installed_build():
-            return
         try:
-            if os.name == "nt":
-                self._set_boot_start_windows(self.state.START_ON_BOOT)
-            elif sys.platform.startswith("linux"):
-                self._set_boot_start_linux(self.state.START_ON_BOOT)
+            self.startup_service.sync(
+                enabled=self.state.START_ON_BOOT,
+                installed_build=self.state.is_installed_build(),
+            )
         except Exception:
             if show_errors:
                 show_dialog(

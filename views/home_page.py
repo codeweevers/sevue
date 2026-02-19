@@ -14,6 +14,7 @@ class HomePageView(QWidget):
     def __init__(self, base_dir, parent=None):
         super().__init__(parent)
         self.base_dir = base_dir
+        self._toggle_locked = False
 
         self.setStyleSheet(
             """
@@ -46,6 +47,10 @@ class HomePageView(QWidget):
             }
             QPushButton#mainBtn:checked:hover {
                 background: #33333a;
+            }
+            QPushButton#mainBtn[locked="true"] {
+                background: #2a2a30;
+                color: #a1a1aa;
             }
             QPushButton#settingsBtn {
                 background: #1b1b1f;
@@ -105,7 +110,7 @@ class HomePageView(QWidget):
         self.toggle_btn.setFixedSize(260, 56)
         self.toggle_btn.setAutoRepeat(False)
         self.toggle_btn.setCheckable(True)
-        self.toggle_btn.clicked.connect(self.toggle_camera_requested.emit)
+        self.toggle_btn.clicked.connect(self.on_toggle_clicked)
 
         self.settings_btn = EnterPushButton("Settings")
         self.settings_btn.setObjectName("settingsBtn")
@@ -124,6 +129,11 @@ class HomePageView(QWidget):
 
         self.setLayout(layout)
 
+    def on_toggle_clicked(self):
+        if self._toggle_locked:
+            return
+        self.toggle_camera_requested.emit()
+
     def ensure_controls_visible(self):
         self.toggle_btn.setVisible(True)
         self.settings_btn.setVisible(True)
@@ -131,19 +141,35 @@ class HomePageView(QWidget):
         self.settings_btn.raise_()
 
     def set_camera_idle(self):
+        self._toggle_locked = False
+        self.toggle_btn.setProperty("locked", False)
         self.toggle_btn.setText("Start Sevue")
         self.toggle_btn.setChecked(False)
-        self.toggle_btn.setEnabled(True)
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
 
     def set_camera_starting(self):
-        self.toggle_btn.setEnabled(False)
+        self._toggle_locked = True
+        self.toggle_btn.setProperty("locked", True)
         self.toggle_btn.setText("Sevue is Starting...")
+        self.toggle_btn.setCursor(Qt.ArrowCursor)
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
 
     def set_camera_running(self):
+        self._toggle_locked = False
+        self.toggle_btn.setProperty("locked", False)
         self.toggle_btn.setText("Stop Sevue")
         self.toggle_btn.setChecked(True)
-        self.toggle_btn.setEnabled(True)
+        self.toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
 
     def set_camera_stopping(self):
-        self.toggle_btn.setEnabled(False)
+        self._toggle_locked = True
+        self.toggle_btn.setProperty("locked", True)
         self.toggle_btn.setText("Sevue is Stopping...")
+        self.toggle_btn.setCursor(Qt.ArrowCursor)
+        self.toggle_btn.style().unpolish(self.toggle_btn)
+        self.toggle_btn.style().polish(self.toggle_btn)
