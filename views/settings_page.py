@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from views.widgets import EnterPushButton, Toggle
+from views.widgets import EnterPushButton, Toggle, show_dialog
 
 
 class SettingsPageView(QWidget):
@@ -395,7 +395,9 @@ class SettingsPageView(QWidget):
         input_box.setCursor(Qt.PointingHandCursor)
         input_box.setFocusPolicy(Qt.StrongFocus)
         label.setBuddy(input_box)
-        input_box.clicked.connect(lambda _, key=action: self.on_shortcut_button_clicked(key))
+        input_box.clicked.connect(
+            lambda _, key=action: self.on_shortcut_button_clicked(key)
+        )
 
         row.addLayout(label_wrap)
         row.addWidget(input_box)
@@ -461,6 +463,7 @@ class SettingsPageView(QWidget):
             self.clear_shortcut_error(action)
         else:
             self.show_shortcut_error(action, message)
+            show_dialog("ok", message, "Invalid Shortcut", self)
 
     def show_shortcut_error(self, action, message):
         label = self.shortcut_errors.get(action)
@@ -469,7 +472,9 @@ class SettingsPageView(QWidget):
             label.setText(message)
             label.setVisible(bool(message))
         if button:
-            button.setText(self.state.normalize_shortcut(self.state.FEATURES[action]["shortcut"]))
+            button.setText(
+                self.state.normalize_shortcut(self.state.FEATURES[action]["shortcut"])
+            )
 
     def clear_shortcut_error(self, action):
         label = self.shortcut_errors.get(action)
@@ -477,7 +482,9 @@ class SettingsPageView(QWidget):
         if label:
             label.setVisible(False)
         if button:
-            button.setText(self.state.normalize_shortcut(self.state.FEATURES[action]["shortcut"]))
+            button.setText(
+                self.state.normalize_shortcut(self.state.FEATURES[action]["shortcut"])
+            )
 
     def card_container(self):
         card = QFrame()

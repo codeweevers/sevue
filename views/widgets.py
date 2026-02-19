@@ -1,6 +1,30 @@
 ﻿from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QCheckBox, QPushButton
+from PySide6.QtWidgets import QCheckBox, QMessageBox, QPushButton
+
+
+def show_dialog(mode, message, title, parent=None):
+    dialog = QMessageBox(parent)
+    dialog.setIcon(QMessageBox.Critical)
+    dialog.setWindowTitle(title)
+    dialog.setText(message)
+
+    normalized_mode = str(mode).strip().lower()
+    if normalized_mode == "yes_no":
+        dialog.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        dialog.setDefaultButton(QMessageBox.No)
+        return dialog.exec() == QMessageBox.Yes
+    if normalized_mode == "ok_cancel":
+        dialog.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        dialog.setDefaultButton(QMessageBox.Ok)
+        return dialog.exec() == QMessageBox.Ok
+    if normalized_mode == "ok":
+        dialog.setStandardButtons(QMessageBox.Ok)
+        dialog.setDefaultButton(QMessageBox.Ok)
+        dialog.exec()
+        return True
+
+    raise ValueError("Invalid dialog mode. Use: yes_no, ok_cancel, or ok.")
 
 
 class EnterPushButton(QPushButton):
