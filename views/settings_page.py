@@ -4,8 +4,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
+    QInputDialog,
     QKeySequenceEdit,
     QLabel,
     QListWidget,
@@ -22,6 +24,7 @@ class SettingsPageView(QWidget):
     show_home_requested = Signal()
     state_toggle_requested = Signal(str, bool)
     camera_select_requested = Signal()
+    model_select_requested = Signal()
 
     def __init__(self, state, parent=None):
         super().__init__(parent)
@@ -35,6 +38,7 @@ class SettingsPageView(QWidget):
         self.shortcut_errors = {}
         self.camera_devices = []
         self.selected_camera_label = "Not selected"
+        self.selected_model_label = "Not selected"
 
         self.setStyleSheet(
             """
@@ -223,6 +227,14 @@ class SettingsPageView(QWidget):
         self.sync_from_state()
 
     def _build_settings_cards(self, content_layout):
+        model_card, model_button, model_label = self.model_option()
+        self.model_select_button = model_button
+        self.model_label = model_label
+        model_card_key = "model:select"
+        self.option_cards[model_card_key] = model_card
+        self.card_categories[model_card_key] = "General"
+        content_layout.addWidget(model_card)
+
         camera_card, camera_button, camera_label = self.camera_option()
         self.camera_select_button = camera_button
         self.camera_label = camera_label
@@ -297,6 +309,7 @@ class SettingsPageView(QWidget):
             button.setText(shortcut_text)
 
         self.update_shortcut_accessibility()
+        self._sync_model_summary()
         self._sync_camera_summary()
 
     def update_shortcut_accessibility(self):
@@ -312,6 +325,12 @@ class SettingsPageView(QWidget):
     def _sync_camera_summary(self):
         if hasattr(self, "camera_label"):
             self.camera_label.setText(f"Selected: {self.selected_camera_label}")
+
+    def _sync_model_summary(self):
+        if hasattr(self, "model_label"):
+            selected = self.state.selected_model_name or "Not selected"
+            self.selected_model_label = selected
+            self.model_label.setText(f"Selected: {selected}")
 
     def set_camera_devices(self, devices):
         self.camera_devices = list(devices or [])
@@ -344,6 +363,10 @@ class SettingsPageView(QWidget):
     def option(self, cfg):
         descriptions = {
             "Start Camera on Launch": "Automatically starts Sevue camera when the app opens.",
+            "Minimize to Tray when Minimized": "Hides Sevue to the system tray when you minimize the window.",
+            "Close to Tray": "Clicking the window close button keeps Sevue running in the tray.",
+            "Start Minimized": "Launch Sevue minimized instead of opening the full window.",
+            "Start Sevue at System Boot": "Start Sevue automatically when you sign in.",
             "Enable Hide/Close Shortcut": "Enable a global hotkey for hide/show window control.",
             "Flip Camera": "Mirror the video feed horizontally for a natural reflection.",
             "Flip Subtitles": "Reverse text direction when looking into a mirror.",
@@ -418,6 +441,43 @@ class SettingsPageView(QWidget):
         choose_btn.setCursor(Qt.PointingHandCursor)
         choose_btn.setFocusPolicy(Qt.StrongFocus)
         choose_btn.clicked.connect(self.camera_select_requested.emit)
+
+        row.addLayout(label_wrap)
+        row.addWidget(choose_btn)
+        return card, choose_btn, current
+
+    def model_option(self):
+        card = self.card_container()
+        row = QHBoxLayout(card)
+        row.setContentsMargins(20, 16, 20, 16)
+        row.setSpacing(16)
+
+        label_wrap = QVBoxLayout()
+        label_wrap.setSpacing(4)
+
+        label = QLabel("AI Model")
+        label.setObjectName("cardTitle")
+
+        subtitle = QLabel(
+            "Choose an existing model or import a custom .task/.tasks model."
+        )
+        subtitle.setObjectName("cardSubtitle")
+        subtitle.setWordWrap(True)
+
+        current = QLabel("Selected: Not selected")
+        current.setObjectName("cardSubtitle")
+        current.setWordWrap(True)
+
+        label_wrap.addWidget(label)
+        label_wrap.addWidget(subtitle)
+        label_wrap.addWidget(current)
+
+        choose_btn = EnterPushButton("Choose Model")
+        choose_btn.setObjectName("settingsBtn")
+        choose_btn.setFixedWidth(190)
+        choose_btn.setCursor(Qt.PointingHandCursor)
+        choose_btn.setFocusPolicy(Qt.StrongFocus)
+        choose_btn.clicked.connect(self.model_select_requested.emit)
 
         row.addLayout(label_wrap)
         row.addWidget(choose_btn)
@@ -563,6 +623,78 @@ class SettingsPageView(QWidget):
 
         layout.addWidget(prompt)
         layout.addWidget(combo)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        return combo.currentData()
+
+    def prompt_model_choice(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Choose Model")
+        dialog.setModal(True)
+        layout = QVBoxLayout(dialog)
+
+        prompt = QLabel("Choose a model, or import a new one with Browse.")
+        prompt.setWordWrap(True)
+
+        combo = QComboBox()
+
+        def refresh_combo(selected_name=None):
+            combo.clear()
+            for model_name in self.state.list_models():
+                combo.addItem(model_name, model_name)
+            target = selected_name or self.state.selected_model_name
+            if target:
+                index = combo.findData(target)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+
+        refresh_combo()
+
+        browse_btn = EnterPushButton("Browse")
+        browse_btn.setObjectName("settingsBtn")
+        browse_btn.setFixedWidth(120)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+
+        def import_model_flow():
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Import Model",
+                "",
+                "Model files (*.task *.tasks);;All files (*)",
+            )
+            if not file_path:
+                return
+
+            while True:
+                name, ok = QInputDialog.getText(
+                    dialog,
+                    "Model Name",
+                    "Enter a name for this model:",
+                )
+                if not ok:
+                    return
+
+                success, message = self.state.import_model(file_path, name)
+                if success:
+                    refresh_combo(name.strip())
+                    return
+
+                show_dialog("ok", message, "Invalid Model Name", self)
+
+        browse_btn.clicked.connect(import_model_flow)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        row.addWidget(combo, 1)
+        row.addWidget(browse_btn)
+
+        layout.addWidget(prompt)
+        layout.addLayout(row)
         layout.addWidget(buttons)
 
         if dialog.exec() != QDialog.Accepted:

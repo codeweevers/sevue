@@ -1,5 +1,6 @@
 ﻿import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -28,7 +29,13 @@ class StateModel(QObject):
         self.SHOW_HAND_DEBUG = False
         self.SHOW_PREVIEW = True
         self.AUTO_START_CAMERA = False
+        self.MINIMIZE_TO_TRAY_WHEN_MINIMIZED = True
+        self.CLOSE_TO_TRAY = False
+        self.START_MINIMIZED = False
+        self.START_ON_BOOT = False
         self.BASE_DIR = self.resource_path("")
+        self.selected_model_name = "Default"
+        self.model_registry = {}
         self._lock = threading.Lock()
         self._hand_landmarks = None
         self._subtitle = {
@@ -43,6 +50,35 @@ class StateModel(QObject):
                 "label": "Start Camera on Launch",
                 "category": "General",
                 "configurable": True,
+            },
+            "minimize_to_tray": {
+                "type": "state",
+                "state": "MINIMIZE_TO_TRAY_WHEN_MINIMIZED",
+                "label": "Minimize to Tray when Minimized",
+                "category": "General",
+                "configurable": True,
+            },
+            "close_to_tray": {
+                "type": "state",
+                "state": "CLOSE_TO_TRAY",
+                "label": "Close to Tray",
+                "category": "General",
+                "configurable": True,
+            },
+            "start_minimized": {
+                "type": "state",
+                "state": "START_MINIMIZED",
+                "label": "Start Minimized",
+                "category": "General",
+                "configurable": True,
+            },
+            "start_on_boot": {
+                "type": "state",
+                "state": "START_ON_BOOT",
+                "label": "Start Sevue at System Boot",
+                "category": "General",
+                "configurable": True,
+                "requires_installed_build": True,
             },
             "toggle_camera": {
                 "type": "action",
@@ -119,17 +155,44 @@ class StateModel(QObject):
         return Path(self.resolve_config_dir(), "config.json")
 
     def resolve_model_path(self):
-        config_dir = self.resolve_config_dir()
-        model_path = Path(config_dir, "model.task")
-        if Path.exists(model_path):
-            return model_path
+        default_model_path = self.ensure_default_model_file()
+        if default_model_path and Path.exists(default_model_path):
+            self.model_registry = {"Default": str(default_model_path)}
+            self.selected_model_name = "Default"
+            return default_model_path
+
         bundled_model = Path(self.BASE_DIR, "data", "model.task")
         if Path.exists(bundled_model):
+            self.model_registry = {"Default": str(bundled_model)}
+            self.selected_model_name = "Default"
+            return bundled_model
+
+        self.model_registry = {}
+        self.selected_model_name = ""
+        return Path(self.resolve_config_dir(), "model.task")
+
+    def resolve_models_dir(self):
+        models_dir = Path(self.resolve_config_dir(), "models")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        return models_dir
+
+    def ensure_default_model_file(self):
+        config_dir = self.resolve_config_dir()
+        legacy_model_path = Path(config_dir, "model.task")
+        models_dir = self.resolve_models_dir()
+        default_model_path = Path(models_dir, "default.task")
+        if Path.exists(default_model_path):
+            return default_model_path
+
+        bundled_model = Path(self.BASE_DIR, "data", "model.task")
+        source_model = legacy_model_path if Path.exists(legacy_model_path) else bundled_model
+        if Path.exists(source_model):
             try:
-                shutil.copy2(bundled_model, model_path)
+                shutil.copy2(source_model, default_model_path)
+                return default_model_path
             except Exception:
-                return bundled_model
-        return model_path
+                return source_model
+        return None
 
     def set_subtitle(self, text, duration=2.5):
         with self._lock:
@@ -190,6 +253,8 @@ class StateModel(QObject):
     def iter_setting_features(self):
         for action, cfg in self.FEATURES.items():
             if cfg.get("type") == "state":
+                if cfg.get("requires_installed_build") and not self.is_installed_build():
+                    continue
                 yield action, cfg
 
     def iter_shortcut_features(self):
@@ -211,6 +276,10 @@ class StateModel(QObject):
             "camera": {
                 "index": self.CAMERA_INDEX,
             },
+            "model": {
+                "selected": self.selected_model_name,
+                "registry": dict(self.model_registry),
+            },
         }
 
     def apply_config(self):
@@ -218,6 +287,8 @@ class StateModel(QObject):
         for action, data in feature_data.items():
             cfg = self.FEATURES.get(action)
             if not cfg or not cfg.get("configurable"):
+                continue
+            if cfg.get("requires_installed_build") and not self.is_installed_build():
                 continue
             if cfg["type"] == "state" and "state" in data:
                 setattr(self, cfg["state"], bool(data["state"]))
@@ -234,6 +305,37 @@ class StateModel(QObject):
                 self.CAMERA_INDEX = camera_index
             else:
                 self.CAMERA_INDEX = None
+
+        model_data = self.config.get("model", {})
+        if isinstance(model_data, dict):
+            loaded_registry = model_data.get("registry", {})
+            valid_registry = {}
+            if isinstance(loaded_registry, dict):
+                for name, path_str in loaded_registry.items():
+                    if not isinstance(name, str) or not name.strip():
+                        continue
+                    if not isinstance(path_str, str) or not path_str.strip():
+                        continue
+                    model_path = Path(path_str)
+                    if Path.exists(model_path):
+                        valid_registry[name.strip()] = str(model_path)
+
+            if not valid_registry:
+                default_model_path = self.ensure_default_model_file()
+                if default_model_path and Path.exists(default_model_path):
+                    valid_registry = {"Default": str(default_model_path)}
+
+            self.model_registry = valid_registry
+            selected_name = model_data.get("selected")
+            if isinstance(selected_name, str) and selected_name in self.model_registry:
+                self.selected_model_name = selected_name
+            elif self.model_registry:
+                self.selected_model_name = next(iter(self.model_registry.keys()))
+            else:
+                self.selected_model_name = ""
+
+            if self.selected_model_name:
+                self.model_path = Path(self.model_registry[self.selected_model_name])
 
     def refresh_config_from_state(self):
         self.config = self.default_config()
@@ -270,6 +372,13 @@ class StateModel(QObject):
             and isinstance(self.config["camera"], dict)
         ):
             self.config["camera"].update(loaded_camera)
+        loaded_model = loaded.get("model", {})
+        if (
+            isinstance(loaded_model, dict)
+            and "model" in self.config
+            and isinstance(self.config["model"], dict)
+        ):
+            self.config["model"].update(loaded_model)
         self.apply_config()
         self.save_config()
 
@@ -339,3 +448,66 @@ class StateModel(QObject):
         if notify:
             self.changed.emit("camera:selected")
         return True
+
+    def list_models(self):
+        return list(self.model_registry.keys())
+
+    def validate_model_name(self, name):
+        normalized = str(name or "").strip()
+        if not normalized:
+            return False, "Model name is invalid. Please try again."
+        if len(normalized) > 64:
+            return False, "Model name is invalid. Please try again."
+        if not re.fullmatch(r"[A-Za-z0-9 _\-.]+", normalized):
+            return False, "Model name is invalid. Please try again."
+        existing_lower = {key.lower() for key in self.model_registry.keys()}
+        if normalized.lower() in existing_lower:
+            return False, "Model name is invalid. Please try again."
+        return True, ""
+
+    def set_selected_model(self, name, notify=True):
+        normalized = str(name or "").strip()
+        if normalized not in self.model_registry:
+            return False
+        if normalized == self.selected_model_name:
+            return True
+
+        self.selected_model_name = normalized
+        self.model_path = Path(self.model_registry[normalized])
+        self.save_config()
+        if notify:
+            self.changed.emit("model:selected")
+        return True
+
+    def import_model(self, source_path, name):
+        source = Path(str(source_path or "")).expanduser()
+        if not source.exists() or not source.is_file():
+            return False, "Model file was not found."
+        if source.suffix.lower() not in {".task", ".tasks"}:
+            return False, "Invalid model file. Please choose a .task or .tasks file."
+
+        ok, message = self.validate_model_name(name)
+        if not ok:
+            return False, message
+
+        normalized_name = str(name).strip()
+        models_dir = self.resolve_models_dir()
+        extension = source.suffix.lower()
+        safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", normalized_name).strip("._")
+        if not safe_stem:
+            safe_stem = "model"
+
+        destination = Path(models_dir, f"{safe_stem}{extension}")
+        suffix_index = 2
+        while Path.exists(destination):
+            destination = Path(models_dir, f"{safe_stem}_{suffix_index}{extension}")
+            suffix_index += 1
+
+        try:
+            shutil.copy2(source, destination)
+        except Exception:
+            return False, "Failed to import model file."
+
+        self.model_registry[normalized_name] = str(destination)
+        self.save_config()
+        return True, ""

@@ -1,9 +1,11 @@
 ﻿import os
 import re
+import sys
 import threading
+from pathlib import Path
 from functools import partial
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QProcess
 from PySide6.QtGui import QCloseEvent, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -67,6 +69,8 @@ class MainWindowController(QMainWindow):
         self.ai_ready = False
         self.available_cameras = []
         self.restart_camera_on_stop = False
+        self.is_restarting = False
+        self.force_exit_requested = False
 
         self.toast_label = QLabel(self)
         self.toast_label.setObjectName("shortcutToast")
@@ -95,6 +99,10 @@ class MainWindowController(QMainWindow):
         self.setup_shortcuts()
         self.update_tray_action()
         self.prepare_camera_selection()
+        self.sync_start_on_boot(show_errors=False)
+
+        if self.state.START_MINIMIZED:
+            QTimer.singleShot(0, self.apply_start_minimized)
 
         if self.state.AUTO_START_CAMERA:
             QTimer.singleShot(0, self.toggle_camera)
@@ -111,6 +119,7 @@ class MainWindowController(QMainWindow):
             self.on_state_toggle_requested
         )
         self.settings_page.camera_select_requested.connect(self.open_camera_selector)
+        self.settings_page.model_select_requested.connect(self.open_model_selector)
 
     def on_state_toggle_requested(self, state_attr, value):
         self.state.set_flag(state_attr, value)
@@ -228,6 +237,12 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_index(cameras[0]["index"])
             self.show_home()
 
+    def open_model_selector(self):
+        selected_model = self.settings_page.prompt_model_choice()
+        if selected_model is None:
+            return
+        self.state.set_selected_model(str(selected_model))
+
     def restart_camera_for_selection_change(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
         ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
@@ -246,6 +261,110 @@ class MainWindowController(QMainWindow):
         if self.ai_thread:
             self.ai_thread.requestInterruption()
 
+    def has_active_workers(self):
+        cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
+        ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
+        return cam_active or ai_active or self.camera_running
+
+    def restart_application(self):
+        program = sys.executable
+        if not program:
+            show_dialog(
+                "ok",
+                "Unable to restart Sevue automatically.",
+                "Restart Failed",
+                self,
+            )
+            return
+
+        arguments = sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv
+        if not QProcess.startDetached(program, arguments):
+            show_dialog(
+                "ok",
+                "Unable to restart Sevue automatically.",
+                "Restart Failed",
+                self,
+            )
+            return
+
+        self.is_restarting = True
+        self.close()
+
+    def apply_start_minimized(self):
+        if not self.state.START_MINIMIZED:
+            return
+        if self.state.MINIMIZE_TO_TRAY_WHEN_MINIMIZED:
+            self.hide()
+            self.update_tray_action()
+        else:
+            self.showMinimized()
+            self.update_tray_action()
+
+    def _startup_command(self):
+        if getattr(sys, "frozen", False):
+            return f'"{sys.executable}"'
+        script = str(Path(sys.argv[0]).resolve()) if sys.argv else ""
+        return f'"{sys.executable}" "{script}"'
+
+    def _set_boot_start_windows(self, enabled):
+        import winreg
+
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+        app_name = "Sevue"
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE
+        ) as reg_key:
+            if enabled:
+                winreg.SetValueEx(
+                    reg_key, app_name, 0, winreg.REG_SZ, self._startup_command()
+                )
+            else:
+                try:
+                    winreg.DeleteValue(reg_key, app_name)
+                except FileNotFoundError:
+                    pass
+
+    def _set_boot_start_linux(self, enabled):
+        autostart_dir = Path.home() / ".config" / "autostart"
+        desktop_file = autostart_dir / "sevue.desktop"
+        if enabled:
+            autostart_dir.mkdir(parents=True, exist_ok=True)
+            desktop_file.write_text(
+                "\n".join(
+                    [
+                        "[Desktop Entry]",
+                        "Type=Application",
+                        "Version=1.0",
+                        "Name=Sevue",
+                        "Comment=Start Sevue on login",
+                        f"Exec={self._startup_command()}",
+                        "X-GNOME-Autostart-enabled=true",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return
+        if desktop_file.exists():
+            desktop_file.unlink()
+
+    def sync_start_on_boot(self, show_errors=True):
+        if not self.state.is_installed_build():
+            return
+        try:
+            if os.name == "nt":
+                self._set_boot_start_windows(self.state.START_ON_BOOT)
+            elif sys.platform.startswith("linux"):
+                self._set_boot_start_linux(self.state.START_ON_BOOT)
+        except Exception:
+            if show_errors:
+                show_dialog(
+                    "ok",
+                    "Could not update system boot startup setting.",
+                    "Startup Setting Error",
+                    self,
+                )
+
     def toggle_window_visibility(self):
         if self.isVisible():
             self.hide()
@@ -254,6 +373,8 @@ class MainWindowController(QMainWindow):
         self.update_tray_action()
 
     def update_tray_action(self):
+        if not hasattr(self, "toggle_window_action"):
+            return
         if self.isVisible() and not self.isMinimized():
             self.toggle_window_action.setText("Hide")
         else:
@@ -280,6 +401,16 @@ class MainWindowController(QMainWindow):
         self.tray.show()
 
     def closeEvent(self, _event: QCloseEvent):
+        if (
+            self.state.CLOSE_TO_TRAY
+            and not self.force_exit_requested
+            and not self.is_restarting
+        ):
+            self.hide()
+            self.update_tray_action()
+            _event.ignore()
+            return
+
         self.state.save_config()
         self.stop_shortcuts()
 
@@ -300,9 +431,9 @@ class MainWindowController(QMainWindow):
         self.activateWindow()
 
     def changeEvent(self, _event):
-        if self.isMinimized():
+        if self.isMinimized() and self.state.MINIMIZE_TO_TRAY_WHEN_MINIMIZED:
             self.hide()
-            self.update_tray_action()
+        self.update_tray_action()
 
     def show_settings(self):
         self.setWindowTitle("Settings")
@@ -468,6 +599,11 @@ class MainWindowController(QMainWindow):
             self.setup_shortcuts()
         if name == "camera:selected":
             self.restart_camera_for_selection_change()
+        if name == "model:selected":
+            if self.has_active_workers():
+                self.restart_application()
+        if name == "START_ON_BOOT":
+            self.sync_start_on_boot(show_errors=True)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -488,4 +624,5 @@ class MainWindowController(QMainWindow):
         QTimer.singleShot(duration_ms, self.toast_label.hide)
 
     def exit_app(self):
+        self.force_exit_requested = True
         self.close()
