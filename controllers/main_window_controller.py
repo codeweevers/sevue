@@ -200,7 +200,9 @@ class MainWindowController(QMainWindow):
     def open_camera_selector(self, reason_text=""):
         cameras = self.refresh_camera_devices()
         if not cameras:
-            show_dialog("ok", "No camera devices were detected.", "Camera Selection", self)
+            show_dialog(
+                "ok", "No camera devices were detected.", "Camera Selection", self
+            )
             return
 
         chosen = self.settings_page.prompt_camera_choice(
@@ -373,6 +375,13 @@ class MainWindowController(QMainWindow):
 
         self.tray = QSystemTrayIcon(icon, self)
         self.tray.setToolTip("Sevue")
+        self.tray.activated.connect(
+            lambda reason: (
+                self.toggle_window_visibility()
+                if reason == QSystemTrayIcon.Trigger
+                else None
+            )
+        )
 
         menu = QMenu()
         self.toggle_window_action = menu.addAction("Show")
