@@ -3,5 +3,5 @@ dist/
 .*/
 __pycache__/
 train_installer_gen/release/
-data/
+data/config.cfg
 train_installer_gen/data/
