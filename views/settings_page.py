@@ -335,9 +335,13 @@ class SettingsPageView(QWidget):
         normalized_uid = str(selected_uid or "").strip().lower()
         selected = None
         if normalized_uid:
-            selected = next((d for d in camera_devices if d.get("uid") == normalized_uid), None)
+            selected = next(
+                (d for d in camera_devices if d.get("uid") == normalized_uid), None
+            )
         if selected is None and isinstance(selected_index, int):
-            selected = next((d for d in camera_devices if d["index"] == selected_index), None)
+            selected = next(
+                (d for d in camera_devices if d["index"] == selected_index), None
+            )
         if selected:
             self.selected_camera_label = selected["label"]
         elif len(camera_devices) == 1:
@@ -667,7 +671,7 @@ class SettingsPageView(QWidget):
                 self,
                 "Import Model",
                 "",
-                "Model files (*.task *.tasks);;All files (*)",
+                "Model files (*.task);;All files (*)",
             )
             if not file_path:
                 return
