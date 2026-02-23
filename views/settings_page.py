@@ -372,18 +372,6 @@ class SettingsPageView(QWidget):
         self.preview.setText(message)
 
     def option(self, cfg):
-        descriptions = {
-            "Start Camera on Launch": "Automatically starts Sevue camera when the app opens.",
-            "Minimize to Tray when Minimized": "Hides Sevue to the system tray when you minimize the window.",
-            "Close to Tray": "Clicking the window close button keeps Sevue running in the tray.",
-            "Start Minimized": "Launch Sevue minimized instead of opening the full window.",
-            "Start Sevue at System Boot": "Start Sevue automatically when you sign in.",
-            "Enable Hide/Close Shortcut": "Enable a global hotkey for hide/show window control.",
-            "Flip Camera": "Mirror the video feed horizontally for a natural reflection.",
-            "Flip Subtitles": "Reverse text direction when looking into a mirror.",
-            "Flip Hands": "Adjust hand tracking coordinates for mirrored display.",
-            "hand Debug": "Visualize tracking landmarks and skeletal connections.",
-        }
         card = self.card_container()
         row = QHBoxLayout(card)
         row.setContentsMargins(20, 16, 20, 16)
@@ -395,7 +383,7 @@ class SettingsPageView(QWidget):
         label = QLabel(cfg["label"])
         label.setObjectName("cardTitle")
 
-        subtitle = QLabel(descriptions.get(cfg["label"], ""))
+        subtitle = QLabel(cfg.get("description", ""))
         subtitle.setObjectName("cardSubtitle")
         subtitle.setWordWrap(True)
 
