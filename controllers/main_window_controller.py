@@ -77,6 +77,7 @@ class MainWindowController(QMainWindow):
         self._camera_refresh_in_progress = False
         self._camera_selection_prepared = False
         self._pending_auto_start_camera = bool(self.state.AUTO_START_CAMERA)
+        self._selected_camera_profile = None
         self.camera_refresh_timer = QTimer(self)
         self.camera_refresh_timer.setInterval(15000)
         self.camera_refresh_timer.timeout.connect(self.refresh_camera_devices_async)
@@ -177,6 +178,7 @@ class MainWindowController(QMainWindow):
 
         if not cameras:
             self.state.set_camera_uid(None, index=None, notify=False)
+            self._selected_camera_profile = None
             show_dialog(
                 "ok",
                 "No camera devices were detected.",
@@ -198,6 +200,7 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     selected["uid"], index=selected["index"], notify=False
                 )
+                self._selected_camera_profile = dict(selected)
                 return True
 
         if len(cameras) == 1:
@@ -205,17 +208,23 @@ class MainWindowController(QMainWindow):
             self.state.set_camera_uid(
                 only_camera["uid"], index=only_camera["index"], notify=False
             )
+            self._selected_camera_profile = dict(only_camera)
             return True
 
         if isinstance(self.state.CAMERA_INDEX, int):
             by_index = next(
-                (camera for camera in cameras if camera["index"] == self.state.CAMERA_INDEX),
+                (
+                    camera
+                    for camera in cameras
+                    if camera["index"] == self.state.CAMERA_INDEX
+                ),
                 None,
             )
             if by_index:
                 self.state.set_camera_uid(
                     by_index["uid"], index=by_index["index"], notify=False
                 )
+                self._selected_camera_profile = dict(by_index)
                 return True
 
         show_dialog(
@@ -224,6 +233,7 @@ class MainWindowController(QMainWindow):
             "Camera Error",
             self,
         )
+        self._selected_camera_profile = None
         return False
 
     def toggle_camera(self):
@@ -241,7 +251,10 @@ class MainWindowController(QMainWindow):
             self.ai_ready = False
 
             self.cam_thread = CameraThread(
-                self.stop_event, self.state, self.frame_buffer
+                self.stop_event,
+                self.state,
+                self.frame_buffer,
+                camera_profile=self._selected_camera_profile,
             )
             self.ai_thread = AIThread(self.stop_event, self.state, self.frame_buffer)
 
@@ -323,6 +336,7 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     selected["uid"], index=selected["index"], notify=False
                 )
+                self._selected_camera_profile = dict(selected)
 
     def open_camera_selector(self, reason_text=""):
         cameras = list(self.available_cameras)
@@ -347,10 +361,13 @@ class MainWindowController(QMainWindow):
         )
         if chosen is None:
             return
-        selected = next((camera for camera in cameras if camera.get("uid") == chosen), None)
+        selected = next(
+            (camera for camera in cameras if camera.get("uid") == chosen), None
+        )
         if not selected:
             return
         self.state.set_camera_uid(chosen, index=selected["index"])
+        self._selected_camera_profile = dict(selected)
         self.settings_page.set_camera_devices(
             cameras,
             selected_uid=self.state.CAMERA_UID,
@@ -369,7 +386,11 @@ class MainWindowController(QMainWindow):
         selected_camera = None
         if self.state.CAMERA_UID:
             selected_camera = next(
-                (camera for camera in cameras if camera.get("uid") == self.state.CAMERA_UID),
+                (
+                    camera
+                    for camera in cameras
+                    if camera.get("uid") == self.state.CAMERA_UID
+                ),
                 None,
             )
             if selected_camera:
@@ -465,29 +486,6 @@ class MainWindowController(QMainWindow):
         ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
         return cam_active or ai_active or self.camera_running
 
-    def restart_application(self):
-        program = sys.executable
-        if not program:
-            show_dialog(
-                "ok",
-                "Unable to restart Sevue automatically.",
-                "Restart Failed",
-                self,
-            )
-            return
-
-        arguments = sys.argv[1:] if getattr(sys, "frozen", False) else sys.argv
-        if not QProcess.startDetached(program, arguments):
-            show_dialog(
-                "ok",
-                "Unable to restart Sevue automatically.",
-                "Restart Failed",
-                self,
-            )
-            return
-
-        self.is_restarting = True
-        self.close()
 
     def apply_start_minimized(self):
         if not self.state.START_MINIMIZED:

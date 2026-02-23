@@ -132,10 +132,11 @@ class CameraThread(WorkerThread):
     frame_ready = Signal(object)
     cam_ready = Signal()
 
-    def __init__(self, stop_event, state, frame_buffer):
+    def __init__(self, stop_event, state, frame_buffer, camera_profile=None):
         super().__init__(stop_event)
         self.state = state
         self.frame_buffer = frame_buffer
+        self.camera_profile = dict(camera_profile or {})
 
     def wrap_text(self, text, font, font_scale, thickness, max_width):
         """Wrap text into multiple lines based on max pixel width."""
@@ -273,17 +274,17 @@ class CameraThread(WorkerThread):
 
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        if COMMON_RESOLUTIONS:
-            preferred_resolution = COMMON_RESOLUTIONS[0]
+        preferred_resolution = None
+        resolutions = self.camera_profile.get("resolutions")
+        if resolutions:
+            top = resolutions[0]
+            preferred_resolution = (int(top["width"]), int(top["height"]))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, preferred_resolution[0])
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, preferred_resolution[1])
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        if fps <= 0:
-            fps = DEFAULT_FPS
-
+        fps = int(self.camera_profile.get("fps") or DEFAULT_FPS)
         with pyvirtualcam.Camera(
             width=width,
             height=height,

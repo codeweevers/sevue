@@ -2,27 +2,8 @@ import os
 import platform
 import re
 import subprocess
-
+from constants import COMMON_RESOLUTIONS, VIRTUAL_CAMERA_MARKERS, DEFAULT_FPS
 import cv2
-
-COMMON_RESOLUTIONS = [
-    (1920, 1080),
-    (1280, 720),
-    (640, 480),
-    (320, 240),
-]
-
-VIRTUAL_CAMERA_MARKERS = (
-    "virtual",
-    "obs",
-    "manycam",
-    "xsplit",
-    "droidcam",
-    "camo",
-    "snap camera",
-    "streamlabs",
-    "v4l2loopback",
-)
 
 
 def _normalize_name(name):
@@ -132,7 +113,7 @@ class CameraManager:
 
             fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
             capabilities["resolutions"] = supported
-            capabilities["fps"] = round(fps, 2) if fps > 0 else 0.0
+            capabilities["fps"] = round(fps, 2) if fps > 0 else DEFAULT_FPS
             return capabilities
         finally:
             if cap is not None:

@@ -25,4 +25,3 @@ class FrameBuffer:
             return cv2.cvtColor(
                 cv2.resize(self.frame, (self.ai_w, self.ai_h)), cv2.COLOR_BGR2RGB
             )
-
