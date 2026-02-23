@@ -21,7 +21,7 @@ from services.startup_service import StartupService
 from views.home_page import HomePageView
 from views.settings_page import SettingsPageView
 from views.widgets import show_dialog
-from workers.camera_utils import list_available_cameras
+from workers.camera_utils import CameraManager
 from workers.threads import AIThread, CameraThread
 
 try:
@@ -33,6 +33,7 @@ except Exception:
 class MainWindowController(QMainWindow):
     _instance = None
     global_action = Signal(str)
+    camera_devices_refreshed = Signal(list)
 
     @staticmethod
     def instance():
@@ -43,6 +44,7 @@ class MainWindowController(QMainWindow):
         self.state = state or StateModel()
         self.frame_buffer = frame_buffer or FrameBuffer()
         self.startup_service = StartupService("Sevue")
+        self.camera_manager = CameraManager()
 
         self.stack = QStackedWidget(self)
         self.shortcuts = []
@@ -72,6 +74,12 @@ class MainWindowController(QMainWindow):
         self.restart_camera_on_stop = False
         self.is_restarting = False
         self.force_exit_requested = False
+        self._camera_refresh_in_progress = False
+        self._camera_selection_prepared = False
+        self._pending_auto_start_camera = bool(self.state.AUTO_START_CAMERA)
+        self.camera_refresh_timer = QTimer(self)
+        self.camera_refresh_timer.setInterval(15000)
+        self.camera_refresh_timer.timeout.connect(self.refresh_camera_devices_async)
 
         self.toast_label = QLabel(self)
         self.toast_label.setObjectName("shortcutToast")
@@ -92,6 +100,7 @@ class MainWindowController(QMainWindow):
 
         self.setup_tray()
         self._wire_events()
+        self.camera_devices_refreshed.connect(self._on_camera_devices_refreshed)
 
         self.hide_shortcut = QShortcut(QKeySequence("Esc"), self)
         self.hide_shortcut.activated.connect(
@@ -99,14 +108,15 @@ class MainWindowController(QMainWindow):
         )
         self.setup_shortcuts()
         self.update_tray_action()
-        self.prepare_camera_selection()
+        self.refresh_camera_devices_async()
+        self.camera_refresh_timer.start()
         self.sync_start_on_boot(show_errors=False)
 
         if self.state.START_MINIMIZED:
             QTimer.singleShot(0, self.apply_start_minimized)
 
         if self.state.AUTO_START_CAMERA:
-            QTimer.singleShot(0, self.toggle_camera)
+            self._pending_auto_start_camera = True
 
     def _wire_events(self):
         self.global_action.connect(self.on_global_action)
@@ -124,6 +134,9 @@ class MainWindowController(QMainWindow):
 
     def on_state_toggle_requested(self, state_attr, value):
         self.state.set_flag(state_attr, value)
+
+    def on_worker_error(self, title, message):
+        show_dialog("ok", message, title, self)
 
     def on_thread_finished(self):
         if (self.cam_thread and self.cam_thread.isRunning()) or (
@@ -157,12 +170,71 @@ class MainWindowController(QMainWindow):
         self.camera_running = True
         self.home_page.set_camera_running()
 
+    def ensure_camera_ready_for_capture(self):
+        cameras = list(self.available_cameras)
+        if not cameras:
+            cameras = self.refresh_camera_devices()
+
+        if not cameras:
+            self.state.set_camera_uid(None, index=None, notify=False)
+            show_dialog(
+                "ok",
+                "No camera devices were detected.",
+                "Camera Error",
+                self,
+            )
+            return False
+
+        if self.state.CAMERA_UID:
+            selected = next(
+                (
+                    camera
+                    for camera in cameras
+                    if camera.get("uid") == self.state.CAMERA_UID
+                ),
+                None,
+            )
+            if selected:
+                self.state.set_camera_uid(
+                    selected["uid"], index=selected["index"], notify=False
+                )
+                return True
+
+        if len(cameras) == 1:
+            only_camera = cameras[0]
+            self.state.set_camera_uid(
+                only_camera["uid"], index=only_camera["index"], notify=False
+            )
+            return True
+
+        if isinstance(self.state.CAMERA_INDEX, int):
+            by_index = next(
+                (camera for camera in cameras if camera["index"] == self.state.CAMERA_INDEX),
+                None,
+            )
+            if by_index:
+                self.state.set_camera_uid(
+                    by_index["uid"], index=by_index["index"], notify=False
+                )
+                return True
+
+        show_dialog(
+            "ok",
+            "No camera is selected. Open Settings and choose a camera.",
+            "Camera Error",
+            self,
+        )
+        return False
+
     def toggle_camera(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
         ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
         workers_active = cam_active or ai_active
 
         if not workers_active and not self.camera_running:
+            if not self.ensure_camera_ready_for_capture():
+                self.home_page.set_camera_idle()
+                return
             self.home_page.set_camera_starting()
             self.stop_event = threading.Event()
             self.cam_ready = False
@@ -178,6 +250,8 @@ class MainWindowController(QMainWindow):
             self.cam_thread.finished.connect(self.on_thread_finished)
             self.ai_thread.finished.connect(self.on_thread_finished)
             self.cam_thread.frame_ready.connect(self.settings_page.on_frame)
+            self.cam_thread.error_reported.connect(self.on_worker_error)
+            self.ai_thread.error_reported.connect(self.on_worker_error)
 
             self.cam_thread.start()
             self.ai_thread.start()
@@ -192,14 +266,76 @@ class MainWindowController(QMainWindow):
             self.ai_thread.requestInterruption()
 
     def refresh_camera_devices(self):
-        self.available_cameras = list_available_cameras()
+        self.available_cameras = self.camera_manager.list_cameras()
         self.settings_page.set_camera_devices(
-            self.available_cameras, selected_index=self.state.CAMERA_INDEX
+            self.available_cameras,
+            selected_uid=self.state.CAMERA_UID,
+            selected_index=self.state.CAMERA_INDEX,
         )
         return self.available_cameras
 
+    def refresh_camera_devices_async(self):
+        # Avoid probing devices while camera workers are active; probing can
+        # contend with an already opened device and destabilize capture.
+        if self.has_active_workers():
+            return
+        if self._camera_refresh_in_progress:
+            return
+        self._camera_refresh_in_progress = True
+
+        def _refresh():
+            try:
+                cameras = self.camera_manager.list_cameras()
+            except Exception:
+                cameras = []
+            self.camera_devices_refreshed.emit(cameras)
+
+        threading.Thread(target=_refresh, daemon=True).start()
+
+    def _on_camera_devices_refreshed(self, cameras):
+        self._camera_refresh_in_progress = False
+        self.available_cameras = list(cameras or [])
+        self.settings_page.set_camera_devices(
+            self.available_cameras,
+            selected_uid=self.state.CAMERA_UID,
+            selected_index=self.state.CAMERA_INDEX,
+        )
+
+        if not self._camera_selection_prepared:
+            self.prepare_camera_selection(cameras=self.available_cameras)
+            self._camera_selection_prepared = True
+
+            if self._pending_auto_start_camera and self.state.CAMERA_UID:
+                self._pending_auto_start_camera = False
+                QTimer.singleShot(0, self.toggle_camera)
+            return
+
+        if self.state.CAMERA_UID:
+            selected = next(
+                (
+                    camera
+                    for camera in self.available_cameras
+                    if camera.get("uid") == self.state.CAMERA_UID
+                ),
+                None,
+            )
+            if selected:
+                self.state.set_camera_uid(
+                    selected["uid"], index=selected["index"], notify=False
+                )
+
     def open_camera_selector(self, reason_text=""):
-        cameras = self.refresh_camera_devices()
+        cameras = list(self.available_cameras)
+        if not cameras:
+            if self.has_active_workers():
+                show_dialog(
+                    "ok",
+                    "Camera list refresh is paused while capture is running. Stop camera or open Settings again in a moment.",
+                    "Camera Selection",
+                    self,
+                )
+                return
+            cameras = self.refresh_camera_devices()
         if not cameras:
             show_dialog(
                 "ok", "No camera devices were detected.", "Camera Selection", self
@@ -207,33 +343,59 @@ class MainWindowController(QMainWindow):
             return
 
         chosen = self.settings_page.prompt_camera_choice(
-            cameras, current_index=self.state.CAMERA_INDEX, reason_text=reason_text
+            cameras, current_uid=self.state.CAMERA_UID, reason_text=reason_text
         )
         if chosen is None:
             return
-        self.state.set_camera_index(int(chosen))
+        selected = next((camera for camera in cameras if camera.get("uid") == chosen), None)
+        if not selected:
+            return
+        self.state.set_camera_uid(chosen, index=selected["index"])
         self.settings_page.set_camera_devices(
-            cameras, selected_index=self.state.CAMERA_INDEX
+            cameras,
+            selected_uid=self.state.CAMERA_UID,
+            selected_index=self.state.CAMERA_INDEX,
         )
 
-    def prepare_camera_selection(self):
-        cameras = self.refresh_camera_devices()
+    def prepare_camera_selection(self, cameras=None):
+        if cameras is None:
+            cameras = self.refresh_camera_devices()
+        else:
+            cameras = list(cameras)
         if not cameras:
-            self.state.set_camera_index(None)
+            self.state.set_camera_uid(None, index=None)
             return
 
-        camera_indices = {camera["index"] for camera in cameras}
+        selected_camera = None
+        if self.state.CAMERA_UID:
+            selected_camera = next(
+                (camera for camera in cameras if camera.get("uid") == self.state.CAMERA_UID),
+                None,
+            )
+            if selected_camera:
+                self.state.set_camera_index(selected_camera["index"], notify=False)
+                return
+
         saved_index = self.state.CAMERA_INDEX
-        has_saved = isinstance(saved_index, int)
-        saved_missing = has_saved and saved_index not in camera_indices
+        if isinstance(saved_index, int):
+            selected_camera = next(
+                (camera for camera in cameras if camera["index"] == saved_index), None
+            )
+            if selected_camera:
+                self.state.set_camera_uid(
+                    selected_camera["uid"], index=selected_camera["index"], notify=False
+                )
+                return
+
+        has_saved_uid = bool(self.state.CAMERA_UID)
+        saved_missing = has_saved_uid
 
         if len(cameras) == 1:
-            only_index = cameras[0]["index"]
-            if saved_index != only_index:
-                self.state.set_camera_index(only_index)
+            only_camera = cameras[0]
+            self.state.set_camera_uid(only_camera["uid"], index=only_camera["index"])
             return
 
-        if not has_saved or saved_missing:
+        if not has_saved_uid or saved_missing:
             self.show_settings()
             reason = (
                 "Your saved camera is no longer available. Choose another camera."
@@ -241,8 +403,11 @@ class MainWindowController(QMainWindow):
                 else "Multiple cameras detected. Choose which camera to use."
             )
             self.open_camera_selector(reason)
-            if self.state.CAMERA_INDEX is None and cameras:
-                self.state.set_camera_index(cameras[0]["index"])
+            if not self.state.CAMERA_UID and cameras:
+                first_camera = cameras[0]
+                self.state.set_camera_uid(
+                    first_camera["uid"], index=first_camera["index"]
+                )
             self.show_home()
 
     def open_model_selector(self):
@@ -428,8 +593,14 @@ class MainWindowController(QMainWindow):
 
     def show_settings(self):
         self.setWindowTitle("Settings")
-        self.refresh_camera_devices()
         self.stack.setCurrentWidget(self.settings_page)
+        self.settings_page.set_camera_devices(
+            self.available_cameras,
+            selected_uid=self.state.CAMERA_UID,
+            selected_index=self.state.CAMERA_INDEX,
+        )
+        if not self.has_active_workers():
+            self.refresh_camera_devices_async()
 
     def show_home(self):
         self.setWindowTitle("Sevue")

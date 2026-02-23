@@ -330,11 +330,14 @@ class SettingsPageView(QWidget):
             selected = self.state.selected_model_name or "Not selected"
             self.model_label.setText(f"Selected: {selected}")
 
-    def set_camera_devices(self, devices, selected_index=None):
+    def set_camera_devices(self, devices, selected_uid=None, selected_index=None):
         camera_devices = list(devices or [])
-        selected = next(
-            (d for d in camera_devices if d["index"] == selected_index), None
-        )
+        normalized_uid = str(selected_uid or "").strip().lower()
+        selected = None
+        if normalized_uid:
+            selected = next((d for d in camera_devices if d.get("uid") == normalized_uid), None)
+        if selected is None and isinstance(selected_index, int):
+            selected = next((d for d in camera_devices if d["index"] == selected_index), None)
         if selected:
             self.selected_camera_label = selected["label"]
         elif len(camera_devices) == 1:
@@ -593,7 +596,7 @@ class SettingsPageView(QWidget):
             self.show_shortcut_error(action, message)
             show_dialog("ok", message, "Invalid Shortcut", self)
 
-    def prompt_camera_choice(self, devices, current_index=None, reason_text=""):
+    def prompt_camera_choice(self, devices, current_uid=None, reason_text=""):
         if not devices:
             show_dialog(
                 "ok", "No camera devices were detected.", "Camera Selection", self
@@ -611,11 +614,12 @@ class SettingsPageView(QWidget):
 
         combo = QComboBox()
         for camera in devices:
-            combo.addItem(camera["label"], camera["index"])
+            combo.addItem(camera["label"], camera.get("uid"))
 
-        if isinstance(current_index, int):
+        normalized_uid = str(current_uid or "").strip().lower()
+        if normalized_uid:
             for idx, camera in enumerate(devices):
-                if camera["index"] == current_index:
+                if str(camera.get("uid", "")).strip().lower() == normalized_uid:
                     combo.setCurrentIndex(idx)
                     break
 

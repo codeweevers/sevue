@@ -20,6 +20,7 @@ class StateModel(QObject):
         self.FLIP_TEXT = False
         self.FLIP_HANDS = False
         self.CAMERA_INDEX = None
+        self.CAMERA_UID = None
         self._word_buffer = []
         self._last_appended_word = None
         self._last_word = None
@@ -54,7 +55,7 @@ class StateModel(QObject):
             "minimize_to_tray": {
                 "type": "state",
                 "state": "MINIMIZE_TO_TRAY_WHEN_MINIMIZED",
-                "label": "Minimize to Tray when Minimized",
+                "label": "Minimize to Tray",
                 "category": "General",
                 "configurable": True,
             },
@@ -146,7 +147,7 @@ class StateModel(QObject):
         return bool(getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"))
 
     def resolve_config_dir(self):
-        dirs = PlatformDirs(appname="Sevue",roaming=True,ensure_exists=True)
+        dirs = PlatformDirs(appname="Sevue", roaming=True, ensure_exists=True)
         if self.is_installed_build():
             return Path(dirs.user_config_dir)
         return Path(self.BASE_DIR) / "data"
@@ -214,7 +215,10 @@ class StateModel(QObject):
     def iter_setting_features(self):
         for action, cfg in self.FEATURES.items():
             if cfg.get("type") == "state":
-                if cfg.get("requires_installed_build") and not self.is_installed_build():
+                if (
+                    cfg.get("requires_installed_build")
+                    and not self.is_installed_build()
+                ):
                     continue
                 yield action, cfg
 
@@ -235,7 +239,7 @@ class StateModel(QObject):
         return {
             "features": features,
             "camera": {
-                "index": self.CAMERA_INDEX,
+                "uid": self.CAMERA_UID,
             },
             "model": {
                 "selected": self.selected_model_name,
@@ -261,6 +265,12 @@ class StateModel(QObject):
 
         camera_data = self.config.get("camera", {})
         if isinstance(camera_data, dict):
+            camera_uid = camera_data.get("uid")
+            if isinstance(camera_uid, str) and camera_uid.strip():
+                self.CAMERA_UID = camera_uid.strip().lower()
+            else:
+                self.CAMERA_UID = None
+
             camera_index = camera_data.get("index")
             if isinstance(camera_index, int) and camera_index >= 0:
                 self.CAMERA_INDEX = camera_index
@@ -269,10 +279,12 @@ class StateModel(QObject):
 
         model_data = self.config.get("model", {})
         if isinstance(model_data, dict):
-            selected_name, registry, model_path = self.model_registry_service.load_registry(
-                config_dir=self.resolve_config_dir(),
-                loaded_registry=model_data.get("registry", {}),
-                selected_name=model_data.get("selected"),
+            selected_name, registry, model_path = (
+                self.model_registry_service.load_registry(
+                    config_dir=self.resolve_config_dir(),
+                    loaded_registry=model_data.get("registry", {}),
+                    selected_name=model_data.get("selected"),
+                )
             )
             self.selected_model_name = selected_name
             self.model_registry = registry
@@ -385,6 +397,26 @@ class StateModel(QObject):
             return True
 
         self.CAMERA_INDEX = new_index
+        if notify:
+            self.changed.emit("camera:selected")
+        return True
+
+    def set_camera_uid(self, uid, index=None, notify=True):
+        normalized_uid = str(uid or "").strip().lower() or None
+        if normalized_uid is None and index is None:
+            new_index = None
+        elif index is None:
+            new_index = self.CAMERA_INDEX
+        elif isinstance(index, int) and index >= 0:
+            new_index = index
+        else:
+            return False
+
+        if self.CAMERA_UID == normalized_uid and self.CAMERA_INDEX == new_index:
+            return True
+
+        self.CAMERA_UID = normalized_uid
+        self.CAMERA_INDEX = new_index
         self.save_config()
         if notify:
             self.changed.emit("camera:selected")
@@ -408,11 +440,13 @@ class StateModel(QObject):
         return True
 
     def import_model(self, source_path, name):
-        success, message, model_name, destination = self.model_registry_service.import_model(
-            config_dir=self.resolve_config_dir(),
-            source_path=source_path,
-            name=name,
-            existing_names=self.model_registry.keys(),
+        success, message, model_name, destination = (
+            self.model_registry_service.import_model(
+                config_dir=self.resolve_config_dir(),
+                source_path=source_path,
+                name=name,
+                existing_names=self.model_registry.keys(),
+            )
         )
         if not success:
             return False, message

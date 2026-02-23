@@ -1,6 +1,7 @@
 import threading
 import time
 from copy import deepcopy
+import os
 
 import cv2
 import mediapipe as mp
@@ -15,7 +16,6 @@ from constants import (
     CONF_THRESHOLD,
     DEFAULT_FPS,
 )
-from workers.camera_utils import list_available_cameras
 from workers.device_utils import get_virtual_cam_device
 
 mp_hands = mp.tasks.vision.HandLandmarksConnections
@@ -23,7 +23,15 @@ mp_drawing = mp.tasks.vision.drawing_utils
 mp_drawing_styles = mp.tasks.vision.drawing_styles
 
 
+def _open_camera_capture(index):
+    if os.name == "nt":
+        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    return cv2.VideoCapture(index)
+
+
 class WorkerThread(QThread):
+    error_reported = Signal(str, str)
+
     def __init__(self, stop_event=None):
         super().__init__()
         self.stop_event = stop_event or threading.Event()
@@ -33,6 +41,9 @@ class WorkerThread(QThread):
             self.stop_event.is_set()
             or QThread.currentThread().isInterruptionRequested()
         )
+
+    def report_error(self, title, message):
+        self.error_reported.emit(str(title), str(message))
 
 
 class AIThread(WorkerThread):
@@ -62,7 +73,7 @@ class AIThread(WorkerThread):
             )
             recognizer = gesture_recognizer.create_from_options(options)
         except Exception as error:
-            print(f"ERROR in AI Thread: {error}")
+            self.report_error("AI Error", f"Could not start AI processing.\n{error}")
             return
 
         try:
@@ -242,34 +253,30 @@ class CameraThread(WorkerThread):
         return frame
 
     def run(self):
-        camera_index = (
-            self.state.CAMERA_INDEX
-            if isinstance(self.state.CAMERA_INDEX, int)
-            else 0
-        )
-        cap = cv2.VideoCapture(camera_index)
+        if not self.state.CAMERA_UID or not isinstance(self.state.CAMERA_INDEX, int):
+            self.report_error(
+                "Camera Error",
+                "No camera is selected. Open Settings and choose a camera.",
+            )
+            return
+
+        camera_index = self.state.CAMERA_INDEX
+
+        cap = _open_camera_capture(camera_index)
         if not cap.isOpened():
             cap.release()
-            for camera in list_available_cameras():
-                fallback_index = camera["index"]
-                cap = cv2.VideoCapture(fallback_index)
-                if cap.isOpened():
-                    camera_index = fallback_index
-                    self.state.set_camera_index(camera_index, notify=False)
-                    break
-        if not cap.isOpened():
-            print("ERROR: Could not open camera")
+            self.report_error(
+                "Camera Error",
+                "Could not open the selected camera.",
+            )
             return
 
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        for width, height in COMMON_RESOLUTIONS:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            if actual_w == width and actual_h == height:
-                break
+        if COMMON_RESOLUTIONS:
+            preferred_resolution = COMMON_RESOLUTIONS[0]
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, preferred_resolution[0])
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, preferred_resolution[1])
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -294,7 +301,10 @@ class CameraThread(WorkerThread):
                 if not ret:
                     retry_count += 1
                     if retry_count > max_retries:
-                        print("ERROR: Camera read failed too many times")
+                        self.report_error(
+                            "Camera Error",
+                            "Camera read failed too many times. Try reselecting the camera in Settings.",
+                        )
                         break
                     time.sleep(0.1)
                     continue

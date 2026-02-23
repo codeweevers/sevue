@@ -5,32 +5,68 @@ import subprocess
 
 import cv2
 
+COMMON_RESOLUTIONS = [
+    (1920, 1080),
+    (1280, 720),
+    (640, 480),
+    (320, 240),
+]
+
+VIRTUAL_CAMERA_MARKERS = (
+    "virtual",
+    "obs",
+    "manycam",
+    "xsplit",
+    "droidcam",
+    "camo",
+    "snap camera",
+    "streamlabs",
+    "v4l2loopback",
+)
+
+
+def _normalize_name(name):
+    return re.sub(r"\s+", " ", str(name or "")).strip()
+
+
 def _is_virtual_camera_name(name):
-    normalized = str(name or "").strip().lower()
+    normalized = _normalize_name(name).lower()
     if not normalized:
         return False
-    virtual_markers = (
-        "virtual",
-        "obs",
-        "v4l2loopback",
-        "manycam",
-        "xsplit",
-        "snap camera",
-        "epoccam",
-        "droidcam",
-        "ndicam",
-        "camo",
-        "streamlabs",
-        "sevue-virtualcam",
-        "sevue virtualcam",
-    )
-    return any(marker in normalized for marker in virtual_markers)
+    return any(marker in normalized for marker in VIRTUAL_CAMERA_MARKERS)
 
 
 def _open_capture(index):
     if os.name == "nt":
         return cv2.VideoCapture(index, cv2.CAP_DSHOW)
     return cv2.VideoCapture(index)
+
+
+def _probe_openable_indices(max_devices):
+    openable = []
+    for index in range(max_devices):
+        cap = _open_capture(index)
+        try:
+            if cap is not None and cap.isOpened():
+                openable.append(index)
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+    return openable
+
+
+def _windows_directshow_names():
+    try:
+        from pygrabber.dshow_graph import FilterGraph  # type: ignore
+
+        graph = FilterGraph()
+        devices = graph.get_input_devices() or []
+        return [_normalize_name(name) for name in devices if _normalize_name(name)]
+    except Exception:
+        return []
 
 
 def _linux_v4l2_names():
@@ -51,71 +87,99 @@ def _linux_v4l2_names():
             current_name = None
             continue
         if line and not line.startswith("\t"):
-            current_name = line.strip().rstrip(":")
+            current_name = _normalize_name(line.rstrip(":"))
             continue
         if current_name and "/dev/video" in line:
             names.append(current_name)
     return names
 
 
-def _windows_pnp_names():
-    names = []
-    cmd = (
-        "Get-CimInstance Win32_PnPEntity | "
-        "Where-Object { $_.PNPClass -in @('Camera','Image') -and $_.Name } | "
-        "Select-Object -ExpandProperty Name"
-    )
-    try:
-        output = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", cmd],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except Exception:
-        return names
-
-    for line in output.splitlines():
-        name = line.strip()
-        if name:
-            names.append(name)
-    return names
-
-
-def _candidate_camera_names():
-    system = platform.system().lower()
-    if system == "linux":
+def _candidate_camera_names(system_name, openable_indices):
+    if system_name == "windows":
+        return _windows_directshow_names()
+    if system_name == "linux":
         return _linux_v4l2_names()
-    if system == "windows":
-        return _windows_pnp_names()
-    return []
+    if system_name == "darwin":
+        return [f"Camera {index}" for index in openable_indices]
+    return [f"Camera {index}" for index in openable_indices]
 
 
-def list_available_cameras(max_devices=8):
-    cameras = []
-    openable_indices = []
-    for index in range(max_devices):
+def _make_uid(system_name, device_name):
+    return f"{system_name}:{device_name}".lower()
+
+
+class CameraManager:
+    def __init__(self, max_devices=8):
+        self.max_devices = max_devices
+        self.system_name = platform.system().lower()
+        self._last_cameras = []
+
+    def detect_capabilities(self, index):
+        capabilities = {"resolutions": [], "fps": 0.0}
         cap = _open_capture(index)
         try:
-            if cap is not None and cap.isOpened():
-                openable_indices.append(index)
+            if cap is None or not cap.isOpened():
+                return capabilities
+
+            supported = []
+            for width, height in COMMON_RESOLUTIONS:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                if actual_w == width and actual_h == height:
+                    supported.append({"width": width, "height": height})
+
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            capabilities["resolutions"] = supported
+            capabilities["fps"] = round(fps, 2) if fps > 0 else 0.0
+            return capabilities
         finally:
             if cap is not None:
-                cap.release()
+                try:
+                    cap.release()
+                except Exception:
+                    pass
 
-    friendly_names = _candidate_camera_names()
+    def list_cameras(self):
+        openable_indices = _probe_openable_indices(self.max_devices)
+        names = _candidate_camera_names(self.system_name, openable_indices)
 
-    for position, index in enumerate(openable_indices):
-        friendly_name = ""
-        if position < len(friendly_names):
-            friendly_name = re.sub(r"\s+", " ", friendly_names[position]).strip()
+        cameras = []
+        name_counts = {}
+        for position, index in enumerate(openable_indices):
+            raw_name = names[position] if position < len(names) else f"Camera {index}"
+            device_name = _normalize_name(raw_name) or f"Camera {index}"
+            if _is_virtual_camera_name(device_name):
+                continue
 
-        if _is_virtual_camera_name(friendly_name):
-            continue
+            seen_count = name_counts.get(device_name.lower(), 0) + 1
+            name_counts[device_name.lower()] = seen_count
+            if seen_count > 1:
+                device_name = f"{device_name} #{seen_count}"
 
-        if friendly_name:
-            label = f"Camera {index} ({friendly_name})"
-        else:
-            label = f"Camera {index}"
-        cameras.append({"index": index, "label": label})
+            capabilities = self.detect_capabilities(index)
+            label = f"{device_name}"
+            cameras.append(
+                {
+                    "index": index,
+                    "label": label,
+                    "uid": _make_uid(self.system_name, device_name),
+                    "resolutions": capabilities["resolutions"],
+                    "fps": capabilities["fps"],
+                }
+            )
 
-    return cameras
+        self._last_cameras = cameras
+        return list(cameras)
+
+    def get_camera_by_uid(self, uid):
+        normalized_uid = str(uid or "").strip().lower()
+        if not normalized_uid:
+            return None
+
+        cameras = self.list_cameras()
+        for camera in cameras:
+            if camera.get("uid") == normalized_uid:
+                return camera
+        return None
