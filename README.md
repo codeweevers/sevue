@@ -1,199 +1,144 @@
 # Sevue
 
-Sevue is a real-time, desktop-based sign language interpretation system focused on accessibility for deaf and hard-of-hearing users.
+Sevue is a desktop application that turns live sign input into subtitle-like text over video and publishes the result to a virtual camera.
 
-It captures live camera input, recognizes hand gestures locally using MediaPipe + ML, and renders readable subtitles directly into a virtual camera feed for use in conferencing and streaming apps. The full pipeline runs on-device to prioritize low latency and privacy.
+The app is built with PySide6, OpenCV, MediaPipe, and pyvirtualcam. It runs locally on your machine and is designed for low-latency, always-on desktop use.
 
-## Features
+## What the App Does
 
-- Real-time hand gesture recognition with MediaPipe Gesture Recognizer
-- On-device inference (no cloud dependency)
-- Live subtitle overlay rendered into output video
-- Virtual camera output for compatibility with Zoom, OBS, Meet, and similar apps
-- Desktop GUI built with PySide6
-- Configurable display behavior (flip video/subtitles/hands, debug landmarks)
-- System tray support for background operation
+- Captures frames from a selected physical camera
+- Runs MediaPipe gesture recognition in a worker thread
+- Builds short text output from recognized gestures
+- Renders text and optional hand-debug overlays into the video stream
+- Sends the processed stream to a virtual camera device
+- Provides a desktop UI for camera/model/settings/shortcuts
 
-## Installation (Prebuilt Releases)
+## Runtime Architecture
 
-Download builds from the GitHub Releases page.
+- `sevue.pyw`: app entrypoint and single-instance lock/activation server
+- `controllers/main_window_controller.py`: main orchestration (UI state, workers, tray, camera/model selection)
+- `models/state_model.py`: persisted app state, settings, shortcuts, model registry, selected camera/model
+- `models/frame_buffer.py`: shared frame buffer between camera and AI workers
+- `workers/threads.py`:
+  - `CameraThread`: capture, overlay rendering, virtual camera output
+  - `AIThread`: gesture inference and subtitle text generation
+- `workers/camera_utils.py`: cross-platform camera discovery and metadata
+- `services/model_registry_service.py`: model import/validation/registry management
+- `services/startup_service.py`: start-on-login integration (Windows/Linux)
+- `views/`: Home/Settings pages and UI widgets
 
-### Windows
+## Requirements
 
-1. Download `sevue_setup.exe` from the latest release.
-2. Run installer normally.
-3. The installer includes virtual camera setup (`Sevue-VirtualCam`).
-4. Launch Sevue from Start Menu or desktop shortcut.
+- Python 3.10+ (3.11/3.12 recommended)
+- A working physical camera
+- OS support:
+  - Windows
+  - Linux
+  - macOS (camera discovery support is present; virtual camera behavior depends on platform setup)
 
-### Linux
-
-1. Download the Linux release artifact from the latest release.
-2. Extract it.
-3. Run the app binary normally.
-4. If needed, install/enable virtual camera support (`v4l2loopback`) before running.
-
-Example virtual camera setup on Linux:
-
-```bash
-sudo apt update
-sudo apt install -y v4l2loopback-dkms v4l2loopback-utils v4l-utils
-sudo modprobe v4l2loopback devices=1 video_nr=10 card_label="Sevue-VirtualCam" exclusive_caps=1
-```
-
-## Build From Source
-
-### 1. Prerequisites
-
-- Python 3.10 or 3.11 recommended
-- Camera/webcam device
-- Git
-- Platform notes:
-  - Windows: administrator rights for virtual camera install scripts
-  - Linux: `v4l-utils` and optional `v4l2loopback`
-
-### 2. Clone
+## Install From Source
 
 ```bash
 git clone https://github.com/codeweevers/sevue.git
 cd sevue
 ```
 
-### 3. Create Virtual Environment
-
 Windows (PowerShell):
 
 ```powershell
-py -3.11 -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Linux:
+Linux/macOS:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### 4. Install Runtime Dependencies
-
-```bash
 pip install --upgrade pip
-pip install opencv-python mediapipe numpy pyvirtualcam pyside6
+pip install -r requirements.txt
 ```
 
-### 5. Install Virtual Camera
-
-Windows (from repo root, auto-elevates):
-
-```powershell
-.\Install_SevueCam.bat
-```
-
-Linux:
-
-- Ensure a virtual camera device exists (example `v4l2loopback` command above).
-
-### 6. Run
+## Run
 
 ```bash
 python sevue.pyw
 ```
 
-## Training Model (Linux)
-
-The training script (`train.py`) uses MediaPipe Model Maker and expects a folder dataset at `hands/<label>/*.jpg`.
-
-### 1. Install training dependencies
-
-```bash
-pip install tensorflow mediapipe-model-maker matplotlib
-```
-
-### 2. Verify dataset layout
-
-```text
-hands/
-  A/
-  B/
-  C/
-  ...
-```
-
-### 3. Train and export
-
-```bash
-python train.py
-```
-
-The script writes model artifacts to `exported_model/` and exports a Gesture Recognizer task file.
-
-### 4. Use trained model in app
-
-Replace the runtime model with your exported file:
-
-```bash
-cp exported_model/gesture_recognizer.task model/gesture_recognizer.task
-```
-
-## Packaging / Distribution
-
-Sevue already includes PyInstaller spec files.
-
-### Windows
-
-```powershell
-pyinstaller sevue-win.spec
-```
-
-Then build installer (Inno Setup) using `installer scrypt.iss`.
-
-### Linux
-
-```bash
-pyinstaller sevue-linux.spec
-```
-
-## Usage
+## Basic Usage
 
 1. Launch Sevue.
-2. Click `Start Sevue`.
-3. Select `Sevue-VirtualCam` in your conferencing/streaming app as camera source.
-4. Use Settings page to adjust flips/debug/preview behavior.
+2. Open Settings and confirm camera/model selection if needed.
+3. Click `Start Sevue`.
+4. In your conferencing/recording app, choose `Sevue-VirtualCam` (or your configured virtual cam target).
 
-### Keyboard Shortcuts
+## Configuration and Persistence
 
-- `C`: Flip camera
-- `O`: Flip subtitle text
-- `H`: Flip hand label side
-- `D`: Toggle hand landmark debug
-- `Esc`: Hide/show behavior (window/tray interaction)
+Sevue saves:
 
-## Project Structure
+- selected camera (UID + resolved index)
+- selected model + model registry
+- app toggles (preview, flips, tray behavior, auto-start camera, etc.)
+- keyboard shortcuts
 
-- `sevue.pyw`: main desktop app, camera loop, inference loop, GUI
-- `subtitle_renderer.py`: subtitle rendering overlay logic
-- `train.py`: model training/evaluation/export
-- `model/gesture_recognizer.task`: runtime model file
-- `hands/`: training dataset
-- `sevue-win.spec`, `sevue-linux.spec`: PyInstaller build specs
-- `Install_SevueCam.bat`, `Uninstall_SevueCam.bat`: Windows virtual camera setup
+Config location:
+
+- Installed/frozen build: platform user config directory (`platformdirs`)
+- Source/dev run: `data/config.json` in project root
+
+## Models
+
+- Default runtime model is resolved via `services/model_registry_service.py`
+- Additional `.task` models can be imported from Settings
+- Imported models are copied into the app model storage directory and registered by name
+
+## Keyboard Shortcuts
+
+Default configurable shortcuts:
+
+- `Ctrl+Shift+S` start/stop camera
+- `Ctrl+Shift+M` hide/show window
+- `Ctrl+Shift+C` flip camera
+- `Ctrl+Shift+O` flip subtitles
+- `Ctrl+Shift+H` flip hand labels
+- `Ctrl+Shift+D` toggle hand debug
+
+Also supported:
+
+- `Esc` window hide/show behavior
+
+## Packaging
+
+PyInstaller spec is included at:
+
+- `train_installer_gen/sevue.spec`
+
+Windows installer-related assets/scripts are in:
+
+- `train_installer_gen/Install_SevueCam.bat`
+- `train_installer_gen/Uninstall_SevueCam.bat`
+- `train_installer_gen/installer scrypt.iss`
+
+## Training (Optional)
+
+Training script:
+
+- `train_installer_gen/train.py`
+
+This is separate from the runtime app and intended for creating/exporting gesture models.
 
 ## Troubleshooting
 
-- Camera not opening:
-  - Close other apps using camera, then restart Sevue.
-- No virtual camera in other apps:
-  - Windows: rerun `Install_SevueCam.bat` as admin.
-  - Linux: verify `v4l2loopback` device exists (`v4l2-ctl --list-devices`).
-- Model file missing:
-  - Ensure `model/gesture_recognizer.task` exists.
-- Linux device name mismatch:
-  - Sevue tries `Sevue-VirtualCam`; if not found it falls back to pyvirtualcam auto-pick.
-
-## Privacy
-
-Sevue processes video locally on-device. No cloud service is required for inference in the default architecture.
+- Camera cannot start:
+  - Close other apps that may own the camera.
+  - Re-open Settings and select the correct device.
+- No virtual camera in external apps:
+  - Verify your virtual camera driver/setup is installed and active.
+- App already running:
+  - Sevue is single-instance; launching again activates the existing window.
 
 ## License
 
-Licensed under the terms in `LICENSE`.
+See `LICENSE`.
