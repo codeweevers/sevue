@@ -162,14 +162,6 @@ class StateModel(QObject):
         self.model_registry = registry
         return model_path
 
-    def resolve_models_dir(self):
-        return self.model_registry_service.resolve_models_dir(self.resolve_config_dir())
-
-    def ensure_default_model_file(self):
-        return self.model_registry_service.ensure_default_model_file(
-            self.resolve_config_dir()
-        )
-
     def set_subtitle(self, text, duration=2.5):
         with self._lock:
             self._subtitle["text"] = text
@@ -201,13 +193,6 @@ class StateModel(QObject):
             setattr(self, name, value)
         self.save_config_for_state(name)
         self.changed.emit(name)
-
-    def set_state_feature(self, action, value):
-        cfg = self.FEATURES.get(action)
-        if not cfg or cfg.get("type") != "state":
-            return False
-        self.set_flag(cfg["state"], bool(value))
-        return True
 
     def append_word(self, word):
         with self._lock:
@@ -407,11 +392,6 @@ class StateModel(QObject):
 
     def list_models(self):
         return list(self.model_registry.keys())
-
-    def validate_model_name(self, name):
-        return self.model_registry_service.validate_model_name(
-            name, self.model_registry.keys()
-        )
 
     def set_selected_model(self, name, notify=True):
         normalized = str(name or "").strip()

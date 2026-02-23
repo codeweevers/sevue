@@ -37,7 +37,6 @@ class SettingsPageView(QWidget):
         self.shortcut_inputs = {}
         self.shortcut_errors = {}
         self.selected_camera_label = "Not selected"
-        self.selected_model_label = "Not selected"
 
         self.setStyleSheet(
             """
@@ -328,7 +327,6 @@ class SettingsPageView(QWidget):
     def _sync_model_summary(self):
         if hasattr(self, "model_label"):
             selected = self.state.selected_model_name or "Not selected"
-            self.selected_model_label = selected
             self.model_label.setText(f"Selected: {selected}")
 
     def set_camera_devices(self, devices, selected_index=None):
