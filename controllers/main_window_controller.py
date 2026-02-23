@@ -137,6 +137,7 @@ class MainWindowController(QMainWindow):
         self.ai_ready = False
         self.home_page.set_camera_idle()
         self.camera_running = False
+        self.settings_page.reset_preview()
 
         if self.restart_camera_on_stop:
             self.restart_camera_on_stop = False

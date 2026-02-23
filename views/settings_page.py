@@ -333,7 +333,9 @@ class SettingsPageView(QWidget):
 
     def set_camera_devices(self, devices, selected_index=None):
         camera_devices = list(devices or [])
-        selected = next((d for d in camera_devices if d["index"] == selected_index), None)
+        selected = next(
+            (d for d in camera_devices if d["index"] == selected_index), None
+        )
         if selected:
             self.selected_camera_label = selected["label"]
         elif len(camera_devices) == 1:
@@ -344,6 +346,7 @@ class SettingsPageView(QWidget):
 
     def on_frame(self, frame):
         if not self.state.SHOW_PREVIEW:
+            self.reset_preview()
             return
 
         h, w, ch = frame.shape
@@ -355,6 +358,10 @@ class SettingsPageView(QWidget):
                 Qt.SmoothTransformation,
             )
         )
+
+    def reset_preview(self, message="Waiting for camera..."):
+        self.preview.clear()
+        self.preview.setText(message)
 
     def option(self, cfg):
         descriptions = {
@@ -417,9 +424,7 @@ class SettingsPageView(QWidget):
         label = QLabel("Camera Device")
         label.setObjectName("cardTitle")
 
-        subtitle = QLabel(
-            "Choose which physical camera Sevue should use for capture."
-        )
+        subtitle = QLabel("Choose which physical camera Sevue should use for capture.")
         subtitle.setObjectName("cardSubtitle")
         subtitle.setWordWrap(True)
 
@@ -591,7 +596,9 @@ class SettingsPageView(QWidget):
 
     def prompt_camera_choice(self, devices, current_index=None, reason_text=""):
         if not devices:
-            show_dialog("ok", "No camera devices were detected.", "Camera Selection", self)
+            show_dialog(
+                "ok", "No camera devices were detected.", "Camera Selection", self
+            )
             return None
 
         dialog = QDialog(self)
