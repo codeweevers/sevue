@@ -1,5 +1,5 @@
 ﻿from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -150,11 +150,13 @@ class SettingsPageView(QWidget):
 
         title = QLabel("Settings")
         title.setObjectName("pageTitle")
-
-        back_btn = EnterPushButton("<- Back")
+        back_btn = EnterPushButton("back")
         back_btn.setObjectName("backBtn")
         back_btn.setAccessibleName("back")
-        back_btn.setFixedSize(70, 26)
+        icon = QIcon("icons/back.png")  # change path
+        back_btn.setIcon(icon)
+        back_btn.setIconSize(QPixmap("icons/back.png").size())
+        back_btn.setFixedSize(36, 36)
         back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self.show_home_requested.emit)
 
