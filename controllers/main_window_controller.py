@@ -138,6 +138,27 @@ class MainWindowController(QMainWindow):
 
     def on_worker_error(self, title, message):
         show_dialog("ok", message, title, self)
+        self.stop_camera_workers(update_ui=True)
+
+    def stop_camera_workers(self, update_ui=False):
+        workers_may_exist = bool(
+            self.stop_event
+            or (self.cam_thread and self.cam_thread.isRunning())
+            or (self.ai_thread and self.ai_thread.isRunning())
+            or self.camera_running
+        )
+        if not workers_may_exist:
+            return
+
+        if update_ui:
+            self.home_page.set_camera_stopping()
+
+        if self.stop_event:
+            self.stop_event.set()
+        if self.cam_thread:
+            self.cam_thread.requestInterruption()
+        if self.ai_thread:
+            self.ai_thread.requestInterruption()
 
     def on_thread_finished(self):
         if (self.cam_thread and self.cam_thread.isRunning()) or (
@@ -271,15 +292,13 @@ class MainWindowController(QMainWindow):
             return
 
         self.home_page.set_camera_stopping()
-        if self.stop_event:
-            self.stop_event.set()
-        if self.cam_thread:
-            self.cam_thread.requestInterruption()
-        if self.ai_thread:
-            self.ai_thread.requestInterruption()
+        self.stop_camera_workers(update_ui=False)
 
     def refresh_camera_devices(self):
-        self.available_cameras = self.camera_manager.list_cameras()
+        try:
+            self.available_cameras = self.camera_manager.list_cameras()
+        except Exception:
+            self.available_cameras = []
         self.settings_page.set_camera_devices(
             self.available_cameras,
             selected_uid=self.state.CAMERA_UID,

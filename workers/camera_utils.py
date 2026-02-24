@@ -23,35 +23,24 @@ def _open_capture(index):
     return cv2.VideoCapture(index)
 
 
-def _probe_openable_indices(max_devices):
-    openable = []
-    for index in range(max_devices):
-        cap = _open_capture(index)
-        try:
-            if cap is not None and cap.isOpened():
-                openable.append(index)
-        finally:
-            if cap is not None:
-                try:
-                    cap.release()
-                except Exception:
-                    pass
-    return openable
-
-
 def _windows_directshow_names():
     try:
-        from pygrabber.dshow_graph import FilterGraph  # type: ignore
+        from pygrabber.dshow_graph import FilterGraph
 
         graph = FilterGraph()
         devices = graph.get_input_devices() or []
-        return [_normalize_name(name) for name in devices if _normalize_name(name)]
+        names = {}
+        for index, raw_name in enumerate(devices):
+            normalized = _normalize_name(raw_name)
+            if normalized:
+                names[index] = normalized
+        return names
     except Exception:
-        return []
+        return {}
 
 
 def _linux_v4l2_names():
-    names = []
+    names = {}
     try:
         output = subprocess.check_output(
             ["v4l2-ctl", "--list-devices"],
@@ -71,18 +60,20 @@ def _linux_v4l2_names():
             current_name = _normalize_name(line.rstrip(":"))
             continue
         if current_name and "/dev/video" in line:
-            names.append(current_name)
+            match = re.search(r"/dev/video(\d+)", line)
+            if not match:
+                continue
+            index = int(match.group(1))
+            names.setdefault(index, current_name)
     return names
 
 
-def _candidate_camera_names(system_name, openable_indices):
+def _candidate_camera_names(system_name):
     if system_name == "windows":
         return _windows_directshow_names()
     if system_name == "linux":
         return _linux_v4l2_names()
-    if system_name == "darwin":
-        return [f"Camera {index}" for index in openable_indices]
-    return [f"Camera {index}" for index in openable_indices]
+    return {}
 
 
 def _make_uid(system_name, device_name):
@@ -96,22 +87,34 @@ class CameraManager:
         self._last_cameras = []
 
     def detect_capabilities(self, index):
-        capabilities = {"resolutions": [], "fps": 0.0}
-        cap = _open_capture(index)
+        capabilities = {"openable": False, "resolutions": [], "fps": 0.0}
+        try:
+            cap = _open_capture(index)
+        except Exception:
+            return capabilities
         try:
             if cap is None or not cap.isOpened():
                 return capabilities
+            capabilities["openable"] = True
 
             supported = []
             for width, height in COMMON_RESOLUTIONS:
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                try:
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                except Exception:
+                    # Some drivers/backends throw native exceptions on property
+                    # probing; skip the rest of probing for this device.
+                    break
                 if actual_w == width and actual_h == height:
                     supported.append({"width": width, "height": height})
 
-            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            try:
+                fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            except Exception:
+                fps = 0.0
             capabilities["resolutions"] = supported
             capabilities["fps"] = round(fps, 2) if fps > 0 else DEFAULT_FPS
             return capabilities
@@ -123,15 +126,21 @@ class CameraManager:
                     pass
 
     def list_cameras(self):
-        openable_indices = _probe_openable_indices(self.max_devices)
-        names = _candidate_camera_names(self.system_name, openable_indices)
+        names = _candidate_camera_names(self.system_name)
 
         cameras = []
         name_counts = {}
-        for position, index in enumerate(openable_indices):
-            raw_name = names[position] if position < len(names) else f"Camera {index}"
+        for index in range(self.max_devices):
+            raw_name = names.get(index, f"Camera {index}")
             device_name = _normalize_name(raw_name) or f"Camera {index}"
             if _is_virtual_camera_name(device_name):
+                continue
+
+            try:
+                capabilities = self.detect_capabilities(index)
+            except Exception:
+                continue
+            if not capabilities["openable"]:
                 continue
 
             seen_count = name_counts.get(device_name.lower(), 0) + 1
@@ -139,7 +148,6 @@ class CameraManager:
             if seen_count > 1:
                 device_name = f"{device_name} #{seen_count}"
 
-            capabilities = self.detect_capabilities(index)
             label = f"{device_name}"
             cameras.append(
                 {
@@ -159,6 +167,10 @@ class CameraManager:
         if not normalized_uid:
             return None
 
+        cameras = self._last_cameras or self.list_cameras()
+        for camera in cameras:
+            if camera.get("uid") == normalized_uid:
+                return camera
         cameras = self.list_cameras()
         for camera in cameras:
             if camera.get("uid") == normalized_uid:
