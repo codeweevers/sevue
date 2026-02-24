@@ -153,10 +153,10 @@ class SettingsPageView(QWidget):
         back_btn = EnterPushButton("back")
         back_btn.setObjectName("backBtn")
         back_btn.setAccessibleName("back")
-        icon = QIcon("icons/back.png")  # change path
+        icon = QIcon("icons/back.png")
         back_btn.setIcon(icon)
-        back_btn.setIconSize(QPixmap("icons/back.png").size())
-        back_btn.setFixedSize(36, 36)
+        # back_btn.setIconSize(QPixmap("icons/back.png").size())
+        back_btn.setFixedSize(70, 30)
         back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self.show_home_requested.emit)
 
