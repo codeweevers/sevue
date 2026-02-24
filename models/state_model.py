@@ -463,3 +463,44 @@ class StateModel(QObject):
         self.model_registry[model_name] = str(destination)
         self.save_config()
         return True, ""
+
+    def remove_model(self, name):
+        normalized = str(name or "").strip()
+        if not normalized or normalized not in self.model_registry:
+            return False, "Model not found."
+        if normalized == "Default":
+            return False, "The Default model cannot be deleted."
+
+        removed_path = Path(self.model_registry.pop(normalized))
+        if self.selected_model_name == normalized:
+            if "Default" in self.model_registry:
+                self.selected_model_name = "Default"
+            elif self.model_registry:
+                self.selected_model_name = next(iter(self.model_registry.keys()))
+            else:
+                self.selected_model_name = ""
+
+        if self.selected_model_name in self.model_registry:
+            self.model_path = Path(self.model_registry[self.selected_model_name])
+        else:
+            self.model_path = Path(self.resolve_config_dir(), "model.task")
+
+        models_dir = self.model_registry_service.resolve_models_dir(
+            self.resolve_config_dir()
+        )
+        try:
+            models_dir_resolved = models_dir.resolve()
+            removed_resolved = removed_path.resolve()
+            if (
+                removed_resolved.exists()
+                and (
+                    removed_resolved == models_dir_resolved
+                    or models_dir_resolved in removed_resolved.parents
+                )
+            ):
+                removed_resolved.unlink()
+        except Exception:
+            pass
+
+        self.save_config()
+        return True, ""

@@ -451,36 +451,40 @@ class MainWindowController(QMainWindow):
             self.show_home()
 
     def open_model_selector(self):
-        while True:
-            result = self.settings_page.prompt_model_choice(
-                model_names=self.state.list_models(),
-                current_model_name=self.state.selected_model_name,
-            )
-            if result is None:
+        result = self.settings_page.prompt_model_choice(
+            model_names=self.state.list_models(),
+            current_model_name=self.state.selected_model_name,
+        )
+        if result is None:
+            return
+
+        action = result.get("action")
+        if action != "apply":
+            return
+
+        for model_name in result.get("deletes", []):
+            name = str(model_name or "").strip()
+            if not name:
+                continue
+            success, message = self.state.remove_model(name)
+            if not success:
+                show_dialog("ok", message, "Delete Model", self)
                 return
 
-            action = result.get("action")
-            if action == "select":
-                model_name = str(result.get("model_name", "")).strip()
-                if model_name:
-                    self.state.set_selected_model(model_name)
+        for item in result.get("imports", []):
+            file_path = str(item.get("file_path", "")).strip()
+            model_name = str(item.get("model_name", "")).strip()
+            if not file_path or not model_name:
+                continue
+
+            success, message = self.state.import_model(file_path, model_name)
+            if not success:
+                show_dialog("ok", message, "Invalid Model Name", self)
                 return
 
-            if action == "browse":
-                file_path = str(result.get("file_path", "")).strip()
-                if not file_path:
-                    continue
-                while True:
-                    model_name = self.settings_page.prompt_model_name()
-                    if model_name is None:
-                        break
-
-                    success, message = self.state.import_model(file_path, model_name)
-                    if success:
-                        self.state.set_selected_model(str(model_name).strip())
-                        return
-
-                    show_dialog("ok", message, "Invalid Model Name", self)
+        selected_name = str(result.get("selected_model_name", "")).strip()
+        if selected_name:
+            self.state.set_selected_model(selected_name)
 
     def restart_camera_for_selection_change(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())

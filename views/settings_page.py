@@ -635,7 +635,9 @@ class SettingsPageView(QWidget):
         dialog.setModal(True)
         layout = QVBoxLayout(dialog)
 
-        prompt = QLabel("Choose a model, or import a new one with Browse.")
+        prompt = QLabel(
+            "Choose a model, import with Browse, or delete the selected model."
+        )
         prompt.setWordWrap(True)
 
         combo = QComboBox()
@@ -649,12 +651,24 @@ class SettingsPageView(QWidget):
         browse_btn = EnterPushButton("Browse")
         browse_btn.setObjectName("settingsBtn")
         browse_btn.setFixedWidth(120)
+        delete_btn = EnterPushButton("Delete")
+        delete_btn.setObjectName("settingsBtn")
+        delete_btn.setFixedWidth(120)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
-        selected_file = {"path": ""}
-        browse_result_code = int(QDialog.DialogCode.Accepted) + 1
+        pending_imports = []
+        pending_deletes = []
+
+        def has_name(name):
+            target = str(name or "").strip().lower()
+            if not target:
+                return False
+            for idx in range(combo.count()):
+                if str(combo.itemData(idx) or "").strip().lower() == target:
+                    return True
+            return False
 
         def on_browse():
             file_path, _ = QFileDialog.getOpenFileName(
@@ -665,26 +679,80 @@ class SettingsPageView(QWidget):
             )
             if not file_path:
                 return
-            selected_file["path"] = file_path
-            dialog.done(browse_result_code)
+            model_name = self.prompt_model_name()
+            if model_name is None:
+                return
+            model_name = str(model_name).strip()
+            if not model_name:
+                return
+            if has_name(model_name):
+                show_dialog(
+                    "ok",
+                    "A model with this name already exists.",
+                    "Invalid Model Name",
+                    self,
+                )
+                return
+
+            combo.addItem(model_name, model_name)
+            combo.setCurrentIndex(combo.count() - 1)
+            pending_imports.append({"model_name": model_name, "file_path": file_path})
 
         browse_btn.clicked.connect(on_browse)
+
+        def on_delete():
+            selected_name = str(combo.currentData() or "").strip()
+            if not selected_name:
+                return
+            if selected_name == "Default":
+                show_dialog(
+                    "ok",
+                    "The Default model cannot be deleted.",
+                    "Delete Model",
+                    self,
+                )
+                return
+
+            should_delete = show_dialog(
+                "yes_no",
+                f"Delete '{selected_name}'?",
+                "Confirm Delete",
+                self,
+            )
+            if not should_delete:
+                return
+
+            index = combo.currentIndex()
+            if index >= 0:
+                combo.removeItem(index)
+            previous_len = len(pending_imports)
+            pending_imports[:] = [
+                item for item in pending_imports if item["model_name"] != selected_name
+            ]
+            removed_pending_import = len(pending_imports) != previous_len
+            if not removed_pending_import and selected_name not in pending_deletes:
+                pending_deletes.append(selected_name)
+
+        delete_btn.clicked.connect(on_delete)
 
         row = QHBoxLayout()
         row.setSpacing(8)
         row.addWidget(combo, 1)
         row.addWidget(browse_btn)
+        row.addWidget(delete_btn)
 
         layout.addWidget(prompt)
         layout.addLayout(row)
         layout.addWidget(buttons)
 
-        result = dialog.exec()
-        if result == browse_result_code:
-            return {"action": "browse", "file_path": selected_file["path"]}
-        if result != QDialog.Accepted:
+        if dialog.exec() != QDialog.Accepted:
             return None
-        return {"action": "select", "model_name": combo.currentData()}
+        return {
+            "action": "apply",
+            "selected_model_name": combo.currentData(),
+            "imports": list(pending_imports),
+            "deletes": list(pending_deletes),
+        }
 
     def prompt_model_name(self):
         name, ok = QInputDialog.getText(
