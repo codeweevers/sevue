@@ -780,11 +780,8 @@ class MainWindowController(QMainWindow):
         self.settings_page.sync_from_state()
         if name.startswith("shortcut:"):
             self.setup_shortcuts()
-        if name == "camera:selected":
+        if name in {"camera:selected", "model:selected"}:
             self.restart_camera_for_selection_change()
-        if name == "model:selected":
-            if self.has_active_workers():
-                self.restart_application()
         if name == "START_ON_BOOT":
             self.sync_start_on_boot(show_errors=True)
 
