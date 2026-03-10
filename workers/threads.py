@@ -1,7 +1,6 @@
 import threading
 import time
 from copy import deepcopy
-import os
 
 import cv2
 import mediapipe as mp
@@ -12,21 +11,15 @@ from PySide6.QtCore import QThread, Signal
 
 from constants import (
     AI_FRAME_SIZE,
-    COMMON_RESOLUTIONS,
     CONF_THRESHOLD,
     DEFAULT_FPS,
 )
+from workers.camera_utils import open_camera_capture
 from workers.device_utils import get_virtual_cam_device
 
 mp_hands = mp.tasks.vision.HandLandmarksConnections
 mp_drawing = mp.tasks.vision.drawing_utils
 mp_drawing_styles = mp.tasks.vision.drawing_styles
-
-
-def _open_camera_capture(index):
-    if os.name == "nt":
-        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    return cv2.VideoCapture(index)
 
 
 class WorkerThread(QThread):
@@ -263,7 +256,7 @@ class CameraThread(WorkerThread):
 
         camera_index = self.state.CAMERA_INDEX
 
-        cap = _open_camera_capture(camera_index)
+        cap = open_camera_capture(camera_index)
         if not cap.isOpened():
             cap.release()
             self.report_error(
