@@ -17,7 +17,7 @@ def _is_virtual_camera_name(name):
     return any(marker in normalized for marker in VIRTUAL_CAMERA_MARKERS)
 
 
-def _open_capture(index):
+def open_camera_capture(index):
     if os.name == "nt":
         return cv2.VideoCapture(index, cv2.CAP_DSHOW)
     return cv2.VideoCapture(index)
@@ -86,10 +86,11 @@ class CameraManager:
         self.system_name = platform.system().lower()
         self._last_cameras = []
 
-    def detect_capabilities(self, index):
-        capabilities = {"openable": False, "resolutions": [], "fps": 0.0}
+    def _detect_capabilities(self, index):
+        capabilities = {"openable": False, "resolutions": [], "fps": DEFAULT_FPS}
+        cap = None
         try:
-            cap = _open_capture(index)
+            cap = open_camera_capture(index)
         except Exception:
             return capabilities
         try:
@@ -126,21 +127,17 @@ class CameraManager:
                     pass
 
     def list_cameras(self):
+        # Name-only discovery for background refresh. We intentionally avoid
+        # opening/probing devices here because probing can contend with active
+        # camera usage and cause instability.
         names = _candidate_camera_names(self.system_name)
 
         cameras = []
         name_counts = {}
-        for index in range(self.max_devices):
+        for index in sorted(names.keys()):
             raw_name = names.get(index, f"Camera {index}")
             device_name = _normalize_name(raw_name) or f"Camera {index}"
             if _is_virtual_camera_name(device_name):
-                continue
-
-            try:
-                capabilities = self.detect_capabilities(index)
-            except Exception:
-                continue
-            if not capabilities["openable"]:
                 continue
 
             seen_count = name_counts.get(device_name.lower(), 0) + 1
@@ -154,13 +151,31 @@ class CameraManager:
                     "index": index,
                     "label": label,
                     "uid": _make_uid(self.system_name, device_name),
-                    "resolutions": capabilities["resolutions"],
-                    "fps": capabilities["fps"],
+                    "resolutions": [],
+                    "fps": DEFAULT_FPS,
                 }
             )
 
         self._last_cameras = cameras
         return list(cameras)
+
+    def probe_camera(self, camera):
+        if not isinstance(camera, dict):
+            return None
+
+        try:
+            index = int(camera.get("index"))
+        except Exception:
+            return None
+
+        capabilities = self._detect_capabilities(index)
+        if not capabilities["openable"]:
+            return None
+
+        probed = dict(camera)
+        probed["resolutions"] = list(capabilities["resolutions"])
+        probed["fps"] = capabilities["fps"]
+        return probed
 
     def get_camera_by_uid(self, uid):
         normalized_uid = str(uid or "").strip().lower()

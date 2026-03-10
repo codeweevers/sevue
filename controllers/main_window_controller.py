@@ -221,16 +221,14 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     selected["uid"], index=selected["index"], notify=False
                 )
-                self._selected_camera_profile = dict(selected)
-                return True
+                return self._probe_selected_camera(selected)
 
         if len(cameras) == 1:
             only_camera = cameras[0]
             self.state.set_camera_uid(
                 only_camera["uid"], index=only_camera["index"], notify=False
             )
-            self._selected_camera_profile = dict(only_camera)
-            return True
+            return self._probe_selected_camera(only_camera)
 
         if isinstance(self.state.CAMERA_INDEX, int):
             by_index = next(
@@ -245,8 +243,7 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     by_index["uid"], index=by_index["index"], notify=False
                 )
-                self._selected_camera_profile = dict(by_index)
-                return True
+                return self._probe_selected_camera(by_index)
 
         show_dialog(
             "ok",
@@ -256,6 +253,21 @@ class MainWindowController(QMainWindow):
         )
         self._selected_camera_profile = None
         return False
+
+    def _probe_selected_camera(self, camera):
+        probed_camera = self.camera_manager.probe_camera(camera)
+        if not probed_camera:
+            self._selected_camera_profile = None
+            show_dialog(
+                "ok",
+                "Could not open the selected camera.",
+                "Camera Error",
+                self,
+            )
+            return False
+
+        self._selected_camera_profile = probed_camera
+        return True
 
     def toggle_camera(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
@@ -307,8 +319,7 @@ class MainWindowController(QMainWindow):
         return self.available_cameras
 
     def refresh_camera_devices_async(self):
-        # Avoid probing devices while camera workers are active; probing can
-        # contend with an already opened device and destabilize capture.
+        # Background refresh is name-only discovery (no probing/opening).
         if self.has_active_workers():
             return
         if self._camera_refresh_in_progress:
