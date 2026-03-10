@@ -120,7 +120,9 @@ class MainWindowController(QMainWindow):
             self._pending_auto_start_camera = True
 
     def _wire_events(self):
-        self.global_action.connect(self.on_global_action)
+        # Global hotkeys are emitted from pynput's worker thread; force queued delivery
+        # so UI state changes always run on Qt's main thread.
+        self.global_action.connect(self.on_global_action, Qt.QueuedConnection)
         self.state.changed.connect(self.on_state_changed)
 
         self.home_page.toggle_camera_requested.connect(self.toggle_camera)
@@ -682,12 +684,7 @@ class MainWindowController(QMainWindow):
             print(
                 "Warning: pynput is not installed. Falling back to in-app shortcuts only."
             )
-            for action, cfg in self.state.FEATURES.items():
-                if action == "hide" or "shortcut" not in cfg:
-                    continue
-                shortcut = QShortcut(QKeySequence(cfg["shortcut"]), self)
-                shortcut.activated.connect(partial(self.dispatch_action, action, True))
-                self.shortcuts.append(shortcut)
+            self.setup_in_app_shortcuts()
             return
 
         hotkeys = {}
@@ -713,10 +710,26 @@ class MainWindowController(QMainWindow):
             hotkeys[pynput_shortcut] = partial(self.emit_global_action, action)
 
         if not hotkeys:
+            self.setup_in_app_shortcuts()
             return
 
-        self.global_hotkey_listener = pynput_keyboard.GlobalHotKeys(hotkeys)
-        self.global_hotkey_listener.start()
+        try:
+            self.global_hotkey_listener = pynput_keyboard.GlobalHotKeys(hotkeys)
+            self.global_hotkey_listener.start()
+        except Exception as exc:
+            print(
+                f"Warning: Failed to start global shortcuts ({exc}). Falling back to in-app shortcuts only."
+            )
+            self.global_hotkey_listener = None
+            self.setup_in_app_shortcuts()
+
+    def setup_in_app_shortcuts(self):
+        for action, cfg in self.state.FEATURES.items():
+            if action == "hide" or "shortcut" not in cfg:
+                continue
+            shortcut = QShortcut(QKeySequence(cfg["shortcut"]), self)
+            shortcut.activated.connect(partial(self.dispatch_action, action, True))
+            self.shortcuts.append(shortcut)
 
     def stop_shortcuts(self):
         for shortcut in self.shortcuts:
