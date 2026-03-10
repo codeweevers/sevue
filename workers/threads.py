@@ -285,7 +285,6 @@ class CameraThread(WorkerThread):
             fmt=PixelFormat.RGB,
             device=get_virtual_cam_device("Sevue-VirtualCam"),
         ) as cam:
-            print("Using virtual cam:", cam.device)
             self.cam_ready.emit()
             retry_count = 0
             max_retries = 5

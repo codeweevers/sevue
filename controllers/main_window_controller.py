@@ -34,6 +34,7 @@ class MainWindowController(QMainWindow):
     _instance = None
     global_action = Signal(str)
     camera_devices_refreshed = Signal(list)
+    camera_probe_completed = Signal(object)
 
     @staticmethod
     def instance():
@@ -78,6 +79,7 @@ class MainWindowController(QMainWindow):
         self._camera_selection_prepared = False
         self._pending_auto_start_camera = bool(self.state.AUTO_START_CAMERA)
         self._selected_camera_profile = None
+        self._camera_probe_in_progress = False
         self.camera_refresh_timer = QTimer(self)
         self.camera_refresh_timer.setInterval(15000)
         self.camera_refresh_timer.timeout.connect(self.refresh_camera_devices_async)
@@ -102,6 +104,7 @@ class MainWindowController(QMainWindow):
         self.setup_tray()
         self._wire_events()
         self.camera_devices_refreshed.connect(self._on_camera_devices_refreshed)
+        self.camera_probe_completed.connect(self._on_camera_probe_completed)
 
         self.hide_shortcut = QShortcut(QKeySequence("Esc"), self)
         self.hide_shortcut.activated.connect(
@@ -223,14 +226,14 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     selected["uid"], index=selected["index"], notify=False
                 )
-                return self._probe_selected_camera(selected)
+                return self._select_camera_profile(selected)
 
         if len(cameras) == 1:
             only_camera = cameras[0]
             self.state.set_camera_uid(
                 only_camera["uid"], index=only_camera["index"], notify=False
             )
-            return self._probe_selected_camera(only_camera)
+            return self._select_camera_profile(only_camera)
 
         if isinstance(self.state.CAMERA_INDEX, int):
             by_index = next(
@@ -245,7 +248,7 @@ class MainWindowController(QMainWindow):
                 self.state.set_camera_uid(
                     by_index["uid"], index=by_index["index"], notify=False
                 )
-                return self._probe_selected_camera(by_index)
+                return self._select_camera_profile(by_index)
 
         show_dialog(
             "ok",
@@ -256,20 +259,79 @@ class MainWindowController(QMainWindow):
         self._selected_camera_profile = None
         return False
 
-    def _probe_selected_camera(self, camera):
-        probed_camera = self.camera_manager.probe_camera(camera)
+    def _select_camera_profile(self, camera):
+        # Keep selection lightweight; full capability probing runs asynchronously.
+        self._selected_camera_profile = dict(camera or {})
+        return True
+
+    def _probe_selected_camera_async(self, camera):
+        if self._camera_probe_in_progress:
+            return
+
+        self._camera_probe_in_progress = True
+        selected_camera = dict(camera or {})
+
+        def _probe():
+            try:
+                probed = self.camera_manager.probe_camera(selected_camera)
+            except Exception:
+                probed = None
+            self.camera_probe_completed.emit(probed)
+
+        threading.Thread(target=_probe, daemon=True).start()
+
+    def _start_camera_workers(self, camera_profile):
+        self.stop_event = threading.Event()
+        self.cam_ready = False
+        self.ai_ready = False
+
+        self.cam_thread = CameraThread(
+            self.stop_event,
+            self.state,
+            self.frame_buffer,
+            camera_profile=camera_profile,
+        )
+        self.ai_thread = AIThread(self.stop_event, self.state, self.frame_buffer)
+
+        self.cam_thread.cam_ready.connect(self.on_cam_ready)
+        self.ai_thread.ai_ready.connect(self.on_ai_ready)
+        self.cam_thread.finished.connect(self.on_thread_finished)
+        self.ai_thread.finished.connect(self.on_thread_finished)
+        self.cam_thread.frame_ready.connect(self.settings_page.on_frame)
+        self.cam_thread.error_reported.connect(self.on_worker_error)
+        self.ai_thread.error_reported.connect(self.on_worker_error)
+
+        self.cam_thread.start()
+        self.ai_thread.start()
+
+    def _on_camera_probe_completed(self, probed_camera):
+        self._camera_probe_in_progress = False
+
         if not probed_camera:
             self._selected_camera_profile = None
+            self.home_page.set_camera_idle()
             show_dialog(
                 "ok",
                 "Could not open the selected camera.",
                 "Camera Error",
                 self,
             )
-            return False
+            return
 
-        self._selected_camera_profile = probed_camera
-        return True
+        # Camera choice may have changed while probe was running.
+        if (
+            self.state.CAMERA_UID
+            and probed_camera.get("uid")
+            and probed_camera.get("uid") != self.state.CAMERA_UID
+        ):
+            self.home_page.set_camera_idle()
+            return
+
+        if self.has_active_workers():
+            return
+
+        self._selected_camera_profile = dict(probed_camera)
+        self._start_camera_workers(self._selected_camera_profile)
 
     def toggle_camera(self):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
@@ -277,32 +339,13 @@ class MainWindowController(QMainWindow):
         workers_active = cam_active or ai_active
 
         if not workers_active and not self.camera_running:
+            if self._camera_probe_in_progress:
+                return
             if not self.ensure_camera_ready_for_capture():
                 self.home_page.set_camera_idle()
                 return
             self.home_page.set_camera_starting()
-            self.stop_event = threading.Event()
-            self.cam_ready = False
-            self.ai_ready = False
-
-            self.cam_thread = CameraThread(
-                self.stop_event,
-                self.state,
-                self.frame_buffer,
-                camera_profile=self._selected_camera_profile,
-            )
-            self.ai_thread = AIThread(self.stop_event, self.state, self.frame_buffer)
-
-            self.cam_thread.cam_ready.connect(self.on_cam_ready)
-            self.ai_thread.ai_ready.connect(self.on_ai_ready)
-            self.cam_thread.finished.connect(self.on_thread_finished)
-            self.ai_thread.finished.connect(self.on_thread_finished)
-            self.cam_thread.frame_ready.connect(self.settings_page.on_frame)
-            self.cam_thread.error_reported.connect(self.on_worker_error)
-            self.ai_thread.error_reported.connect(self.on_worker_error)
-
-            self.cam_thread.start()
-            self.ai_thread.start()
+            self._probe_selected_camera_async(self._selected_camera_profile)
             return
 
         self.home_page.set_camera_stopping()
@@ -521,7 +564,6 @@ class MainWindowController(QMainWindow):
         cam_active = bool(self.cam_thread and self.cam_thread.isRunning())
         ai_active = bool(self.ai_thread and self.ai_thread.isRunning())
         return cam_active or ai_active or self.camera_running
-
 
     def apply_start_minimized(self):
         if not self.state.START_MINIMIZED:
