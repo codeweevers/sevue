@@ -28,6 +28,8 @@ class SettingsPageView(QWidget):
 
     def __init__(self, state, parent=None):
         super().__init__(parent)
+        self.setObjectName("SettingsPageView")
+        self.setAttribute(Qt.WA_StyledBackground, True)  # recommended
         self.state = state
         self.current_category = None
         self.nav_categories = []
@@ -40,10 +42,13 @@ class SettingsPageView(QWidget):
 
         self.setStyleSheet(
             """
-            SettingsPageView {
+            QWidget#SettingsPageView {
                 background: #121214;
                 font-family: "Segoe UI", sans-serif;
                 color: #e0e0e0;
+            }
+            QWidget#contentPanel {
+                background: #121214;
             }
             QWidget#sidebar {
                 background: #1b1b1f;
@@ -150,7 +155,7 @@ class SettingsPageView(QWidget):
 
         title = QLabel("Settings")
         title.setObjectName("pageTitle")
-        back_btn = EnterPushButton("back")
+        back_btn = EnterPushButton("Back")
         back_btn.setObjectName("backBtn")
         back_btn.setAccessibleName("back")
         icon = QIcon("icons/back.png")
@@ -173,6 +178,7 @@ class SettingsPageView(QWidget):
         sidebar.setFixedWidth(280)
 
         content_panel = QWidget()
+        content_panel.setObjectName("contentPanel")
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(40, 32, 40, 32)
         content_layout.setSpacing(24)

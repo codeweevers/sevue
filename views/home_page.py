@@ -13,12 +13,14 @@ class HomePageView(QWidget):
 
     def __init__(self, base_dir, parent=None):
         super().__init__(parent)
+        self.setObjectName("HomePageView")  # ← add this
+        self.setAttribute(Qt.WA_StyledBackground, True)  # optional but good
         self.base_dir = base_dir
         self._toggle_locked = False
 
         self.setStyleSheet(
             """
-            HomePageView {
+            QWidget#HomePageView {
                 background: #121214;
             }
             QLabel#logo {
