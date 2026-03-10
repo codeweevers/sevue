@@ -129,7 +129,7 @@ class StateModel(QObject):
             "toggle_debug": {
                 "type": "state",
                 "state": "SHOW_HAND_DEBUG",
-                "label": "hand Debug",
+                "label": "Hand Debug",
                 "description": "Show hand landmark debug info on the video feed.",
                 "shortcut": "Ctrl+Shift+D",
                 "category": "Video",
@@ -491,12 +491,9 @@ class StateModel(QObject):
         try:
             models_dir_resolved = models_dir.resolve()
             removed_resolved = removed_path.resolve()
-            if (
-                removed_resolved.exists()
-                and (
-                    removed_resolved == models_dir_resolved
-                    or models_dir_resolved in removed_resolved.parents
-                )
+            if removed_resolved.exists() and (
+                removed_resolved == models_dir_resolved
+                or models_dir_resolved in removed_resolved.parents
             ):
                 removed_resolved.unlink()
         except Exception:
