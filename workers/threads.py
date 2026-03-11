@@ -100,6 +100,8 @@ class AIThread(WorkerThread):
                     gesture = result.gestures[0][0]
                     if gesture.score >= CONF_THRESHOLD:
                         word = gesture.category_name
+                        if word == "none":
+                            continue
                         now = time.time()
 
                         if word != self.state._last_word:
