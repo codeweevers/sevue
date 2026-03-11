@@ -62,7 +62,7 @@ class AIThread(WorkerThread):
                 min_hand_detection_confidence=0.5,
                 min_hand_presence_confidence=0.5,
                 min_tracking_confidence=0.5,
-                running_mode = vision_running_mode.VIDEO
+                running_mode=vision_running_mode.VIDEO,
             )
             recognizer = gesture_recognizer.create_from_options(options)
         except Exception as error:
@@ -102,7 +102,7 @@ class AIThread(WorkerThread):
                         word = gesture.category_name
                         now = time.time()
 
-                        if word != self.state._last_word:
+                        if word != self.state._last_word and word != "none":
                             self.state._last_word = word
                             self.state._last_word_time = now
                         elif (now - self.state._last_word_time) > 0.25:
@@ -114,8 +114,8 @@ class AIThread(WorkerThread):
                             self.state.set_subtitle(sentence, duration=3.0)
                 elif time.time() - self.state._last_word_time > 2.0:
                     self.state.clear_buffer()
-                    self.state._last_word = None
-                    self.state._last_appended_word = None
+                    self.state._last_word = ""
+                    self.state._last_appended_word = ""
         finally:
             recognizer.close()
 
@@ -310,10 +310,10 @@ class CameraThread(WorkerThread):
                 # Dark scene
                 if brightness < 80:
                     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-                    l,a,b = cv2.split(lab)
-                    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                    l, a, b = cv2.split(lab)
+                    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
                     l = clahe.apply(l)
-                    lab = cv2.merge((l,a,b))
+                    lab = cv2.merge((l, a, b))
                     frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
                 # Backlit / very bright
@@ -322,7 +322,7 @@ class CameraThread(WorkerThread):
 
                 # Normal lighting
                 else:
-                    frame = cv2.GaussianBlur(frame,(3,3),0)
+                    frame = cv2.GaussianBlur(frame, (3, 3), 0)
 
                 # Edge enhancement for hand details
                 frame = cv2.bilateralFilter(frame, 5, 50, 50)
