@@ -19,7 +19,7 @@ def _is_virtual_camera_name(name):
 
 def open_camera_capture(index):
     if os.name == "nt":
-        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        return cv2.VideoCapture(index)
     return cv2.VideoCapture(index)
 
 

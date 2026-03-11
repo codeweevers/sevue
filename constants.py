@@ -4,12 +4,6 @@ DEFAULT_FPS = 30
 VIRTUAL_CAMERA_MARKERS = (
     "virtual",
     "obs",
-    "manycam",
-    "xsplit",
-    "droidcam",
-    "camo",
-    "snap camera",
-    "streamlabs",
     "v4l2loopback",
 )
 
