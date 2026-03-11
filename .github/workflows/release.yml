@@ -169,10 +169,6 @@ jobs:
       - build-linux
 
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
       - name: Check out repository
         uses: actions/checkout@v3
         with:
@@ -186,6 +182,11 @@ jobs:
         env:
           OUTPUT: release_notes.md
           GITHUB_REPO: ${{ github.repository }}
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
