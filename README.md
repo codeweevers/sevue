@@ -9,7 +9,7 @@ The app is built with PySide6, OpenCV, MediaPipe, and pyvirtualcam. It runs loca
 - Captures frames from a selected physical camera
 - Runs MediaPipe gesture recognition in a worker thread
 - Builds short text output from recognized gestures
-- Renders text and optional hand-debug overlays into the video stream
+- Renders text stream
 - Sends the processed stream to a virtual camera device
 - Provides a desktop UI for camera/model/settings/shortcuts
 
@@ -29,12 +29,12 @@ The app is built with PySide6, OpenCV, MediaPipe, and pyvirtualcam. It runs loca
 
 ## Requirements
 
-- Python 3.10+ (3.11/3.12 recommended)
-- A working physical camera
+- Python 3.10 to Python 3.12
+- A working physical camera or apps like DroidCam
 - OS support:
   - Windows
   - Linux
-  - macOS (camera discovery support is present; virtual camera behavior depends on platform setup)
+  - macOS 
 
 ## Install From Source
 
@@ -46,17 +46,10 @@ cd sevue
 Windows (PowerShell):
 
 ```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-Linux/macOS:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+# create and activate a virtual env. For example with conda
+conda create -n sevue python=3.12
+conda activate sevue
+# setup
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
@@ -70,9 +63,8 @@ python sevue.pyw
 ## Basic Usage
 
 1. Launch Sevue.
-2. Open Settings and confirm camera/model selection if needed.
-3. Click `Start Sevue`.
-4. In your conferencing/recording app, choose `Sevue-VirtualCam` (or your configured virtual cam target).
+2. Click `Start Sevue`.
+3. In your conferencing/recording app, choose `Sevue-VirtualCam` (or your configured virtual cam target).
 
 ## Configuration and Persistence
 
@@ -123,9 +115,17 @@ Windows installer-related assets/scripts are in:
 
 ## Training (Optional)
 
-Training script:
+Training can only be done on **Linux** and must use **Python 3.10 or 3.11**. This process is separate from the runtime app and is intended for creating and exporting custom gesture models.
 
-- `train_installer_gen/train.py`
+1. Set up a compatible environment (Linux, Python 3.10‑3.11) and install the required package:
+   ```bash
+   pip install mediapipe-model-maker
+   ```
+2. Use the training script located at `train_installer_gen/train.py` to start model training.
+Note: edit the script to set the folder path of your dataset folder. The dataset should be structured as folders of images, where each folder name represents the gesture label (e.g., `thumbs_up/`, `wave/`, etc.).
+3. Before or after training, run `make_none.py` to generate the required "none" files; you will need to edit that script to point the dataset folder path to your own data.
+4. When the process completes the exported model will be written to `exported_model/gesture_recognizer.task`.
+5. Import the resulting `.task` file using the **choose model** option in the app's settings.
 
 This is separate from the runtime app and intended for creating/exporting gesture models.
 
