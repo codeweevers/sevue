@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import random
 TARGET_NONE_COUNT = 3000
-DATASET_PATH = "dataset"
+DATASET_PATH = "frames"
 NONE_FOLDER = os.path.join(DATASET_PATH, "none")
 GENERATE_PER_IMAGE = 2
 
