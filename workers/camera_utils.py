@@ -19,16 +19,13 @@ def _is_virtual_camera_name(name):
 
 def open_camera_capture(index):
     if os.name == "nt":
+        # Try DirectShow first (fast for real webcams)
         cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
         if cap.isOpened():
             return cap
         cap.release()
 
-        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
-        if cap.isOpened():
-            return cap
-        cap.release()
-
+        # Fallback for DroidCam / virtual cams
         return cv2.VideoCapture(index)
 
     return cv2.VideoCapture(index)
