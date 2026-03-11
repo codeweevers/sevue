@@ -59,9 +59,9 @@ class AIThread(WorkerThread):
             options = gesture_options(
                 base_options=base_options(model_asset_buffer=data),
                 num_hands=2,
-                min_hand_detection_confidence=0.65,
-                min_hand_presence_confidence=0.65,
-                min_tracking_confidence=0.65,
+                min_hand_detection_confidence=0.75,
+                min_hand_presence_confidence=0.8,
+                min_tracking_confidence=0.85,
                 running_mode=vision_running_mode.VIDEO,
             )
             recognizer = gesture_recognizer.create_from_options(options)
@@ -102,7 +102,7 @@ class AIThread(WorkerThread):
                         word = gesture.category_name
                         now = time.time()
 
-                        if word != self.state._last_word and word != "none":
+                        if word != self.state._last_word:
                             self.state._last_word = word
                             self.state._last_word_time = now
                         elif (now - self.state._last_word_time) > 0.25:
@@ -114,8 +114,8 @@ class AIThread(WorkerThread):
                             self.state.set_subtitle(sentence, duration=3.0)
                 elif time.time() - self.state._last_word_time > 2.0:
                     self.state.clear_buffer()
-                    self.state._last_word = ""
-                    self.state._last_appended_word = ""
+                    self.state._last_word = None
+                    self.state._last_appended_word = None
         finally:
             recognizer.close()
 
