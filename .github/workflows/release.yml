@@ -147,7 +147,7 @@ jobs:
             --after-install packaging/linux/hooks/postinst.sh \
             --after-remove packaging/linux/hooks/postrm.sh \
             -C pkgroot \
-            -p artifacts/sevue-${VERSION}-1.x86_64.rpm \
+            -p artifacts/sevue-${VERSION}.x86_64.rpm \
             opt/sevue usr/bin/sevue usr/share/applications/sevue.desktop
 
       - name: Build Linux binary zip
