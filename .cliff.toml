@@ -21,7 +21,6 @@ commit_parsers = [
   { message = "^fix", group = "Bug Fixes" },
   { message = "^perf", group = "Performance" },
   { message = "^docs", group = "Documentation" },
-  { message = "^refactor", group = "Refactoring" },
-  { message = "^test", group = "Tests" },
-  { message = "^chore", group = "Maintenance" }
+  { message = "^refact", group = "Refactoring" },
+
 ]
