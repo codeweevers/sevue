@@ -59,9 +59,9 @@ class AIThread(WorkerThread):
             options = gesture_options(
                 base_options=base_options(model_asset_buffer=data),
                 num_hands=2,
-                min_hand_detection_confidence=0.5,
-                min_hand_presence_confidence=0.5,
-                min_tracking_confidence=0.5,
+                min_hand_detection_confidence=0.65,
+                min_hand_presence_confidence=0.65,
+                min_tracking_confidence=0.65,
                 running_mode=vision_running_mode.VIDEO,
             )
             recognizer = gesture_recognizer.create_from_options(options)
