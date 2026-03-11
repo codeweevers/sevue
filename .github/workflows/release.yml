@@ -147,7 +147,7 @@ jobs:
             --after-install packaging/linux/hooks/postinst.sh \
             --after-remove packaging/linux/hooks/postrm.sh \
             -C pkgroot \
-            -p artifacts/sevue-${VERSION}-1.x86_64.rpm \
+            -p artifacts/sevue-${VERSION}.x86_64.rpm \
             opt/sevue usr/bin/sevue usr/share/applications/sevue.desktop
 
       - name: Build Linux binary zip
@@ -173,13 +173,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-
+      - name: Install git-cliff
+        run: |
+          curl -L https://github.com/orhun/git-cliff/releases/latest/download/git-cliff-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz
+          sudo mv git-cliff /usr/local/bin/
+      - name: Generate changelog
+        run: |
+          git fetch --tags
+          git-cliff --latest --strip header > release_notes.md
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Sevue ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: release_notes.md
           files: |
             release-assets/**/*.exe
             release-assets/**/*.deb

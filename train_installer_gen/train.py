@@ -12,7 +12,7 @@ print("GPUs:", tf.config.list_physical_devices("GPU"))
 import matplotlib.pyplot as plt
 
 data = gesture_recognizer.Dataset.from_folder(
-    dirname="dataset",
+    dirname="frames",
     hparams=gesture_recognizer.HandDataPreprocessingParams(shuffle=True),
 )
 train_data, rest_data = data.split(0.6)
