@@ -19,9 +19,12 @@ def _is_virtual_camera_name(name):
 
 def open_camera_capture(index):
     if os.name == "nt":
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        if cap.isOpened():
+            return cap
+        cap.release()
         return cv2.VideoCapture(index)
     return cv2.VideoCapture(index)
-
 
 def _windows_directshow_names():
     try:
