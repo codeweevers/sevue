@@ -1,5 +1,5 @@
 #define MyAppName "Sevue"
-#define MyAppVersion "1.4"
+#define MyAppVersion "1.5"
 #define MyAppPublisher "CodeWeevers"
 #define MyAppURL "https://github.com/codeweevers/sevue"
 #define MyAppExeName "Sevue.exe"
