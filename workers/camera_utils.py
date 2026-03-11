@@ -23,8 +23,16 @@ def open_camera_capture(index):
         if cap.isOpened():
             return cap
         cap.release()
+
+        cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
+        if cap.isOpened():
+            return cap
+        cap.release()
+
         return cv2.VideoCapture(index)
+
     return cv2.VideoCapture(index)
+
 
 def _windows_directshow_names():
     try:
