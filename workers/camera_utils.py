@@ -106,19 +106,12 @@ class CameraManager:
                 return capabilities
             capabilities["openable"] = True
 
-            supported = []
-            for width, height in COMMON_RESOLUTIONS:
-                try:
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                except Exception:
-                    # Some drivers/backends throw native exceptions on property
-                    # probing; skip the rest of probing for this device.
-                    break
-                if actual_w == width and actual_h == height:
-                    supported.append({"width": width, "height": height})
+            supported = supported = [   
+                                        {"width": 3840, "height": 2160},
+                                        {"width": 2560, "height": 1440},
+                                        {"width": 1920, "height": 1080},
+                                        {"width": 1280, "height": 720},
+                                    ]
 
             try:
                 fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
