@@ -59,10 +59,10 @@ class AIThread(WorkerThread):
             options = gesture_options(
                 base_options=base_options(model_asset_buffer=data),
                 num_hands=2,
-                min_hand_detection_confidence=0.65,
-                min_hand_presence_confidence=0.65,
-                min_tracking_confidence=0.65,
-                running_mode=vision_running_mode.IMAGE,
+                min_hand_detection_confidence=0.5,
+                min_hand_presence_confidence=0.5,
+                min_tracking_confidence=0.5,
+                running_mode = vision_running_mode.VIDEO
             )
             recognizer = gesture_recognizer.create_from_options(options)
         except Exception as error:
@@ -74,11 +74,12 @@ class AIThread(WorkerThread):
             while not self.should_stop():
                 rgb = self.frame_buffer.get_ai()
                 if rgb is None:
-                    time.sleep(0.01)
+                    time.sleep(0.005)
                     continue
 
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                result = recognizer.recognize(mp_image)
+                timestamp = int(time.monotonic() * 1000)
+                result = recognizer.recognize_for_video(mp_image, timestamp)
 
                 hand_labels = []
                 if result.hand_landmarks and result.handedness:
@@ -100,16 +101,14 @@ class AIThread(WorkerThread):
                     if gesture.score >= CONF_THRESHOLD:
                         word = gesture.category_name
                         now = time.time()
+
                         if word != self.state._last_word:
                             self.state._last_word = word
                             self.state._last_word_time = now
-                        elif (
-                            word == self.state._last_word
-                            and word != self.state._last_appended_word
-                            and (now - self.state._last_word_time) > 0.2
-                        ):
-                            self.state.append_word(word)
-                            self.state._last_appended_word = word
+                        elif (now - self.state._last_word_time) > 0.25:
+                            if word != self.state._last_appended_word:
+                                self.state.append_word(word)
+                                self.state._last_appended_word = word
                         sentence = self.state.get_buffer_text()
                         if sentence:
                             self.state.set_subtitle(sentence, duration=3.0)
@@ -257,6 +256,7 @@ class CameraThread(WorkerThread):
         camera_index = self.state.CAMERA_INDEX
 
         cap = open_camera_capture(camera_index)
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
         if not cap.isOpened():
             cap.release()
             self.report_error(
@@ -303,7 +303,37 @@ class CameraThread(WorkerThread):
                     continue
 
                 retry_count = 0
-                self.frame_buffer.push(frame)
+
+                # ----- Adaptive brightness pipeline -----
+                brightness = frame.mean()
+
+                # Dark scene
+                if brightness < 80:
+                    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+                    l,a,b = cv2.split(lab)
+                    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                    l = clahe.apply(l)
+                    lab = cv2.merge((l,a,b))
+                    frame = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+                # Backlit / very bright
+                elif brightness > 180:
+                    frame = cv2.convertScaleAbs(frame, alpha=0.8, beta=-20)
+
+                # Normal lighting
+                else:
+                    frame = cv2.GaussianBlur(frame,(3,3),0)
+
+                # Edge enhancement for hand details
+                frame = cv2.bilateralFilter(frame, 5, 50, 50)
+
+                # Prepare frame for AI
+                ai_frame = cv2.resize(frame, AI_FRAME_SIZE)
+                ai_frame = cv2.cvtColor(ai_frame, cv2.COLOR_BGR2RGB)
+
+                # Send to AI thread only if previous frame processed
+                if not self.frame_buffer.has_frame():
+                    self.frame_buffer.push_latest(ai_frame)
                 subtitle = self.state.get_subtitle()
                 now = time.time()
 
