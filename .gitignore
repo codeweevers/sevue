@@ -7,3 +7,4 @@ data/config.json
 train_installer_gen/data/
 train_installer_gen/dataset/
 train_installer_gen/exported_model/
+frames/
