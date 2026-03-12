@@ -77,6 +77,7 @@ class MainWindowController(QMainWindow):
         self.force_exit_requested = False
         self._camera_refresh_in_progress = False
         self._camera_selection_prepared = False
+        self._camera_selector_open = False
         self._pending_auto_start_camera = bool(self.state.AUTO_START_CAMERA)
         self._selected_camera_profile = None
         self._camera_probe_in_progress = False
@@ -390,8 +391,10 @@ class MainWindowController(QMainWindow):
         )
 
         if not self._camera_selection_prepared:
-            self.prepare_camera_selection(cameras=self.available_cameras)
+            # Mark as prepared before opening modal selection UI to avoid
+            # re-entrant refresh callbacks spawning multiple chooser dialogs.
             self._camera_selection_prepared = True
+            self.prepare_camera_selection(cameras=self.available_cameras)
 
             if self._pending_auto_start_camera and self.state.CAMERA_UID:
                 self._pending_auto_start_camera = False
@@ -414,6 +417,9 @@ class MainWindowController(QMainWindow):
                 self._selected_camera_profile = dict(selected)
 
     def open_camera_selector(self, reason_text=""):
+        if self._camera_selector_open:
+            return
+
         cameras = list(self.available_cameras)
         if not cameras:
             if self.has_active_workers():
@@ -431,9 +437,14 @@ class MainWindowController(QMainWindow):
             )
             return
 
-        chosen = self.settings_page.prompt_camera_choice(
-            cameras, current_uid=self.state.CAMERA_UID, reason_text=reason_text
-        )
+        self._camera_selector_open = True
+        try:
+            chosen = self.settings_page.prompt_camera_choice(
+                cameras, current_uid=self.state.CAMERA_UID, reason_text=reason_text
+            )
+        finally:
+            self._camera_selector_open = False
+
         if chosen is None:
             return
         selected = next(
