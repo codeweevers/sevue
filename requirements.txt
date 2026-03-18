@@ -1,6 +1,6 @@
 mediapipe==0.10.32
 opencv-python==4.13.0.92
-pillow==12.1.0
+pillow==12.1.1
 platformdirs==4.8.0
 pynput==1.8.1
 PySide6==6.10.2
