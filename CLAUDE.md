@@ -61,7 +61,7 @@ Releases are automated via GitHub Actions (`.github/workflows/release.yml`) trig
 
 - Global hotkeys use `pynput` keyboard listener; actions are emitted to Qt main thread via `global_action` signal with `Qt.QueuedConnection`
 - Config loading applies defaults then merges saved values; missing/invalid config falls back to defaults
-- Model registry: bundled `data/model.task` is copied to user config on first run; imported models stored in `<config_dir>/models/`
+- Model registry: bundled `data/models/default.task` is copied to user config on first run; imported models stored in `<config_dir>/models/`
 - Camera discovery: `workers/camera_utils.py` provides cross-platform device enumeration with UID resolution
 
 ## Constants
