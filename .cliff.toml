@@ -14,6 +14,7 @@ footer = ""
 [git]
 conventional_commits = true
 filter_unconventional = false
+tag_pattern = "v[0-9]*"
 split_commits = false
 
 commit_parsers = [
