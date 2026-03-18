@@ -12,6 +12,56 @@ The app is built with PySide6, OpenCV, MediaPipe, and pyvirtualcam. It runs loca
 - Renders text stream
 - Sends the processed stream to a virtual camera device
 - Provides a desktop UI for camera/model/settings/shortcuts
+## installation
+
+### quick install
+
+1. Grab the proper  file for your OS  from the [Releases](https://github.com/codeweevers/sevue/releases/latest) page.
+2. Install the file like normal for your OS. Usually just double-click on the file.
+3. That's it, sevue will be installed to your system like normal and shows up on the doc / start menu
+
+### Install From Source
+
+#### Requirements
+
+- Python 3.10 to Python 3.12
+- A working physical camera or apps like DroidCam
+- OS support:
+  - Windows
+  - Linux
+  - macOS 
+
+#### steps
+
+clone the project:
+```bash
+git clone https://github.com/codeweevers/sevue.git
+cd sevue
+```
+
+create and activate a virtual env. For example with conda:
+``` bash
+conda create -n sevue python=3.12
+conda activate sevue
+```
+
+install requirements:
+``` bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+#### Run
+
+```bash
+python sevue.pyw
+```
+
+## Basic Usage
+
+1. Launch Sevue.
+2. Click `Start Sevue`.
+3. In your conferencing/recording app, choose `Sevue-VirtualCam` (or your configured virtual cam target).
 
 ## Runtime Architecture
 
@@ -26,45 +76,6 @@ The app is built with PySide6, OpenCV, MediaPipe, and pyvirtualcam. It runs loca
 - `services/model_registry_service.py`: model import/validation/registry management
 - `services/startup_service.py`: start-on-login integration (Windows/Linux)
 - `views/`: Home/Settings pages and UI widgets
-
-## Requirements
-
-- Python 3.10 to Python 3.12
-- A working physical camera or apps like DroidCam
-- OS support:
-  - Windows
-  - Linux
-  - macOS 
-
-## Install From Source
-
-```bash
-git clone https://github.com/codeweevers/sevue.git
-cd sevue
-```
-
-Windows (PowerShell):
-
-```powershell
-# create and activate a virtual env. For example with conda
-conda create -n sevue python=3.12
-conda activate sevue
-# setup
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-## Run
-
-```bash
-python sevue.pyw
-```
-
-## Basic Usage
-
-1. Launch Sevue.
-2. Click `Start Sevue`.
-3. In your conferencing/recording app, choose `Sevue-VirtualCam` (or your configured virtual cam target).
 
 ## Configuration and Persistence
 
