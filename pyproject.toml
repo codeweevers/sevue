@@ -1,0 +1,17 @@
+[project]
+name = "sevue"
+version = "1.71"
+description = "Sevue is a desktop application that turns live sign input into subtitle-like text over video and publishes the result to a virtual camera."
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "mediapipe==0.10.32",
+    "opencv-python==4.13.0.92",
+    "pillow==12.1.0",
+    "platformdirs==4.8.0",
+    "pygrabber==0.2",
+    "pyinstaller>=6.20.0",
+    "pynput==1.8.1",
+    "pyside6==6.10.2",
+    "pyvirtualcam==0.15.0",
+]
