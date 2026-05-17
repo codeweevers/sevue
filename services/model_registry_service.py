@@ -32,8 +32,8 @@ class ModelRegistryService:
         return None
 
     def resolve_initial_model(self, config_dir):
-        default_model_path = self.ensure_default_model_file(config_dir)
-        if not default_model_path:
+        model_path = self.ensure_default_model_file(config_dir)
+        if not model_path:
             model_path = self._bundled_model_path()
         if model_path and model_path.exists():
             return "Default", {"Default": str(model_path)}, model_path
